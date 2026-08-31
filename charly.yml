@@ -1,7 +1,7 @@
 version: 2026.232.0520
 openwebui:
     candy:
-        version: 2026.243.0100
+        version: 2026.243.0910
         description: |
             Open WebUI LLM chat front-end with an auto-configuring entrypoint, served as a supervised HTTP service on port 8080.
             Installs the Open WebUI server (the `open-webui` PyPI package via pixi)
@@ -152,9 +152,9 @@ openwebui-skill:
             openwebui:
               base: fedora
               candy:
-                - '@github.com/opencharly/layer-agent-forwarding:v2026.243.0408'
+                - '@github.com/opencharly/layer-agent-forwarding:vTAG'
                 - openwebui
-                - '@github.com/opencharly/pod-dbus:v2026.235.2115'
+                - '@github.com/opencharly/pod-dbus:vTAG'
                 - charly
               ports:
                 - "8080:8080"
