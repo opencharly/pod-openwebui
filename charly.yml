@@ -1,7 +1,5 @@
-version: 2026.232.0520
 openwebui:
     candy:
-        version: 2026.243.0910
         description: |
             Open WebUI LLM chat front-end with an auto-configuring entrypoint, served as a supervised HTTP service on port 8080.
             Installs the Open WebUI server (the `open-webui` PyPI package via pixi)
