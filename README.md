@@ -23,16 +23,23 @@ reads the auto-generated `WEBUI_SECRET_KEY`, then execs
 | Volume | `data` at `/opt/data` |
 | Env | `DATA_DIR=/opt/data`, `PORT=8080`, `ENABLE_CODE_EXECUTION=true`, `ENABLE_DIRECT_CONNECTIONS=true`, … |
 | `env_require` | `WEBUI_ADMIN_EMAIL` |
-| `secret_require` | `WEBUI_ADMIN_PASSWORD` (auto-generated on first deploy) |
+| `secret_require` | `WEBUI_ADMIN_PASSWORD` (credential-backed — supply it with `-e` on `charly config`) |
 | `secret_accept` | `OPENROUTER_API_KEY`, `OLLAMA_API_KEY`, `OPENAI_API_KEY`, `IMMICH_API_KEY` |
 | `mcp_accept` | `jupyter`, `chrome-devtools` |
 | Alias | `open-webui` |
 
-`WEBUI_ADMIN_PASSWORD` is auto-generated on first deploy as a 32-byte hex random
-value via the credential store; retrieve it with
-`charly secrets get charly/secret WEBUI_ADMIN_PASSWORD`. Provider API keys live in
-the credential backend and are injected at runtime via podman secrets — never in
-plaintext in the deploy.
+`WEBUI_ADMIN_PASSWORD` is a required credential, so the `charly config` path will not
+proceed without one: with no value it stops on `missing required credential-backed
+secret(s)`, and `charly config openwebui -e WEBUI_ADMIN_PASSWORD=<32-byte hex>` imports
+it into the credential backend, strips it from the deploy, and injects it as the podman
+secret `charly-openwebui-webui-admin-password`. Provider API keys work the same way —
+never in plaintext in the deploy.
+
+Reading a provisioned value back is `charly secrets get charly/secret
+WEBUI_ADMIN_PASSWORD` **where the `secrets` command plugin is available**; it is not
+part of the default binary today (tracked in opencharly/charly#995), so until that
+lands the authoritative copy is the credential backend itself
+(`~/.config/charly/config.yml` → `keyring_keys: charly/secret/<NAME>`).
 
 `WEBUI_SECRET_KEY` is a credential the image never ships: Open Web UI 0.12.3 refuses
 to start without it once authentication is on, so the candy provisions it once per
@@ -45,10 +52,15 @@ argument and does not read the environment.
 
 ```bash
 charly box build openwebui
-charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com -e OPENROUTER_API_KEY=sk-or-xxx
+charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com \
+  -e WEBUI_ADMIN_PASSWORD=<32-byte hex> \
+  -e OPENROUTER_API_KEY=sk-or-xxx
 charly start openwebui
 # Open http://localhost:8080
 ```
+
+Both admin values are mandatory on the `charly config` path — the deploy refuses to
+continue without the credential rather than inventing one.
 
 Deploy alongside provider containers for full functionality — Open WebUI consumes
 `OLLAMA_HOST` from a deployed `ollama` and the `jupyter` / `chrome-devtools` MCP

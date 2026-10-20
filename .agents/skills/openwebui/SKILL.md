@@ -43,7 +43,9 @@ openwebui:
 
 ```bash
 charly box build openwebui
-charly config openwebui -e OPENROUTER_API_KEY=sk-or-xxx
+charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com \
+                        -e WEBUI_ADMIN_PASSWORD=<32-byte hex> \
+                        -e OPENROUTER_API_KEY=sk-or-xxx
 charly start openwebui
 # Open http://localhost:8080
 ```
@@ -51,6 +53,11 @@ charly start openwebui
 ## Deployment Patterns
 
 ### Standalone with GPG secrets (recommended)
+
+> The `charly secrets …` steps need the `secrets` command plugin, which the default
+> binary does not ship yet (opencharly/charly#995). Without it, pass the same values
+> with `-e` on `charly config` as above.
+
 ```bash
 charly secrets gpg setup
 charly secrets gpg set OPENROUTER_API_KEY sk-or-xxx
@@ -99,22 +106,32 @@ defaults it to true), so an absent Ollama never appears as a failing provider.
 
 `WEBUI_ADMIN_PASSWORD` is a `secret_require:` entry, so it lives in the credential
 store under the default namespace (`charly/secret`) and reaches the container as a
-podman secret injected into the env. The image-owned `secret: webui-secret-key`
-(`WEBUI_SECRET_KEY`) is auto-generated per deployment and provisioned as the podman
-secret `charly-openwebui-webui-secret-key`.
+podman secret injected into the env. It is enforced, not invented: `charly config`
+stops on `missing required credential-backed secret(s)` when it is absent, and `-e
+WEBUI_ADMIN_PASSWORD=…` imports it into the backend and strips it from the deploy. The
+image-owned `secret: webui-secret-key` (`WEBUI_SECRET_KEY`) is auto-generated per
+deployment and provisioned as the podman secret
+`charly-openwebui-webui-secret-key`.
+
+The `charly secrets …` surface below is the documented credential interface, but the
+`secrets` command plugin is **not** in the default binary today — `charly secrets`
+answers with usage, from a candy-loaded project too (opencharly/charly#995). Read a
+provisioned value from the credential backend (`~/.config/charly/config.yml` →
+`keyring_keys: charly/secret/<NAME>`) until that lands.
 
 ```bash
 # Tier 1: admin password (credential store -> podman secret)
-charly secrets get charly/secret WEBUI_ADMIN_PASSWORD
-charly secrets set charly/secret WEBUI_ADMIN_PASSWORD <password>
+charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com \
+                        -e WEBUI_ADMIN_PASSWORD=<32-byte hex>
 
-# Tier 1: auto-generated infrastructure secrets — inspect what is provisioned
-charly secrets list charly/secret
+# Tier 1: what is provisioned for this deploy (works without the secrets plugin)
 charly status openwebui          # the Secrets: line lists charly-openwebui-*
 
-# Tier 2: User API keys (GPG-encrypted)
+# Tier 1 + 2 (needs the `secrets` command plugin — see #995)
+charly secrets get charly/secret WEBUI_ADMIN_PASSWORD
+charly secrets set charly/secret WEBUI_ADMIN_PASSWORD <password>
+charly secrets list charly/secret
 charly secrets gpg set OPENROUTER_API_KEY sk-or-new-key
-charly secrets gpg show
 charly config openwebui --env-file .secrets --update-all
 ```
 
