@@ -24,7 +24,7 @@ reads the auto-generated `WEBUI_SECRET_KEY`, then execs
 | Env | `DATA_DIR=/opt/data`, `PORT=8080`, `ENABLE_CODE_EXECUTION=true`, `ENABLE_DIRECT_CONNECTIONS=true`, … |
 | `env_require` | `WEBUI_ADMIN_EMAIL` |
 | `secret_require` | `WEBUI_ADMIN_PASSWORD` (credential-backed — supply it with `-e` on `charly config`) |
-| `secret_accept` | `OPENROUTER_API_KEY`, `OLLAMA_API_KEY`, `OPENAI_API_KEY`, `IMMICH_API_KEY` |
+| `secret_accept` | `OPENROUTER_API_KEY`, `OLLAMA_API_KEY`, `OPENAI_API_KEY` |
 | `mcp_accept` | `jupyter`, `chrome-devtools` |
 | Alias | `open-webui` |
 
@@ -40,6 +40,11 @@ WEBUI_ADMIN_PASSWORD` **where the `secrets` command plugin is available**; it is
 part of the default binary today (tracked in opencharly/charly#995), so until that
 lands the authoritative copy is the credential backend itself
 (`~/.config/charly/config.yml` → `keyring_keys: charly/secret/<NAME>`).
+
+Open Web UI has no immich integration, so this candy accepts neither `IMMICH_API_URL` nor
+`IMMICH_API_KEY`: they were dead declarations here (nothing in the image read them, and the
+`immich` candy self-accepts its own URL), and a compose of the two generates and runs the same
+without them. `hermes` remains the real consumer of the immich provide.
 
 `WEBUI_SECRET_KEY` is a credential the image never ships: Open Web UI 0.12.3 refuses
 to start without it once authentication is on, so the candy provisions it once per

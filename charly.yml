@@ -36,8 +36,12 @@ openwebui:
               description: "Enable authentication (default: true)"
             - name: CHARLY_MCP_SERVERS
               description: "JSON array of MCP servers (auto-injected by mcp_provide layers)"
-            - name: IMMICH_API_URL
-              description: "Immich HTTP API URL (auto-injected by immich layer env_provides)"
+            # The entrypoint forwards this to BOTH CODE_EXECUTION_* and CODE_INTERPRETER_*
+            # when a jupyter MCP server is detected, but nothing could provide it: no
+            # env_accept existed, so an authenticated Jupyter needed `charly config -e`.
+            - name: CODE_EXECUTION_JUPYTER_AUTH_TOKEN
+              description: "Jupyter auth token for the code-execution engine (auto-injected by a jupyter candy env_provide)"
+
         # Credential-store-backed env vars. Values live in the user's credential
         # backend (keyring/config) and are injected at runtime via podman
         # secrets (Secret=<name>,type=env,target=<var>). Never land in deploy.yml
@@ -61,11 +65,9 @@ openwebui:
               description: "API key for Ollama Cloud inference"
               key: charly/api-key/ollama
             - name: OPENAI_API_KEY
-              description: "Direct OpenAI API key"
+              description: "Direct OpenAI API key (alone it is enough — the base URL defaults to https://api.openai.com/v1)"
               key: charly/api-key/openai
-            - name: IMMICH_API_KEY
-              description: "Immich API key for programmatic access to the running immich instance"
-              key: charly/api-key/immich
+
         mcp_accept:
             - name: jupyter
               description: "JupyterLab CRDT MCP server for notebook manipulation"
@@ -126,6 +128,36 @@ openwebui:
               http:
                 http: http://127.0.0.1:${HOST_PORT:8080}/
                 status: 200
+            # The entrypoint's provider projection has no other committed witness, so it is
+            # asserted HERE as a BUILD-scope check: the stub `open-webui` below stands in for
+            # the real service and captures what the entrypoint WOULD exec, which is the
+            # projection under test. Build scope is deliberate — `check live` resolves the
+            # PUBLISHED candy, so a runtime-scoped step here would be skipped in both phases;
+            # `check image` runs the candy this tree actually built, and fails without the
+            # key-alone fix (measured: the same input produced no provider before it — at
+            # build time there is no OPENAI_API_KEY in the environment at all, so the key is
+            # SET explicitly in case A and explicitly ABSENT in case C).
+            - check: the entrypoint configures a provider from OPENAI_API_KEY alone, defaulting the base URL to the upstream endpoint — the declared secret must work without a second variable
+              id: entrypoint-openai-key-alone
+              exit_status: 0
+              stdout:
+                - contains: "OpenAI-compatible at https://api.openai.com/v1"
+                - contains: "PROJECTED=https://api.openai.com/v1"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\nif [ -z "$OPENAI_API_BASE_URLS" ]; then echo "PROJECTED=none"; else echo "PROJECTED=$OPENAI_API_BASE_URLS"; fi\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN OPENAI_API_KEY=probe-key PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: with no provider variables set the entrypoint invents no provider
+              id: entrypoint-openai-absent
+              exit_status: 0
+              stdout:
+                - contains: "PROJECTED=none"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\nif [ -z "$OPENAI_API_BASE_URLS" ]; then echo "PROJECTED=none"; else echo "PROJECTED=$OPENAI_API_BASE_URLS"; fi\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
             - check: the mandatory admin email is injected into the running service environment
               exit_status: 0
               context:

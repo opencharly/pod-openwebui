@@ -40,16 +40,20 @@ if [ -n "${OLLAMA_API_KEY:-}" ]; then
     echo "openwebui-entrypoint: Ollama Cloud configured"
 fi
 
-# Direct OpenAI (additive)
-if [ -n "${OPENAI_API_KEY:-}" ] && [ -n "${OPENAI_API_BASE_URL:-}" ]; then
+# Direct OpenAI (additive). The KEY is what declares the provider; the base URL only
+# says which endpoint. Requiring both meant the declared `OPENAI_API_KEY` secret did
+# nothing on its own — the user set it, no provider appeared, and nothing said why. The
+# upstream default is used when the URL is absent, exactly as Open Web UI would default it.
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+    OPENAI_BASE="${OPENAI_API_BASE_URL:-https://api.openai.com/v1}"
     if [ -n "$URLS" ]; then
-        URLS="$URLS;$OPENAI_API_BASE_URL"
+        URLS="$URLS;$OPENAI_BASE"
         KEYS="$KEYS;$OPENAI_API_KEY"
     else
-        URLS="$OPENAI_API_BASE_URL"
+        URLS="$OPENAI_BASE"
         KEYS="$OPENAI_API_KEY"
     fi
-    echo "openwebui-entrypoint: OpenAI-compatible at $OPENAI_API_BASE_URL"
+    echo "openwebui-entrypoint: OpenAI-compatible at $OPENAI_BASE"
 fi
 
 if [ -n "$URLS" ]; then
