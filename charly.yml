@@ -14,7 +14,7 @@ openwebui:
             entrypoint, the running service, the admin email injected into its
             environment, and the HTTP 200 the web UI returns on its published port.
         require:
-            - '@github.com/opencharly/layer-python:v2026.273.1820'
+            - '@github.com/opencharly/layer-python:v2026.293.1922'
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
             DATA_DIR: "/opt/data"
@@ -111,6 +111,16 @@ openwebui:
                 running: true
             - check: the Open WebUI web interface answers HTTP 200 on the published port
               timeout: 30s
+              # First start is not quick: Open WebUI runs its Alembic migrations and
+              # builds the model cache before uvicorn binds, so a single unconditional
+              # GET on a fresh deployment hits the port forwarder with nothing behind it
+              # and gets a connection reset (measured: the whole live phase failed on
+              # this step at ~8s into a cold bed). `eventually` probes readiness in the
+              # engine — a bounded retry, never a fixed sleep — for the app's real
+              # cold-start budget; steady state is still asserted by the same single
+              # request once it is up.
+              eventually: 3m
+              retry_interval: 2s
               context:
                 - runtime
               http:
