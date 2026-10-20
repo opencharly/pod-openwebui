@@ -41,6 +41,12 @@ part of the default binary today (tracked in opencharly/charly#995), so until th
 lands the authoritative copy is the credential backend itself
 (`~/.config/charly/config.yml` → `keyring_keys: charly/secret/<NAME>`).
 
+The `IMMICH_API_URL` accept and the `IMMICH_API_KEY` secret are **contract participation, not
+consumption**: the immich candy `env_provide`s the URL and names this candy as a consumer, so
+both are accepted to keep that compose pairing intact — but Open Web UI has no immich
+integration, so nothing in this image reads either value. They are documented rather than
+removed, and rather than wired to something that does not exist.
+
 `WEBUI_SECRET_KEY` is a credential the image never ships: Open Web UI 0.12.3 refuses
 to start without it once authentication is on, so the candy provisions it once per
 deployment (podman secret `charly-openwebui-webui-secret-key`) and keeps it stable —

@@ -36,8 +36,19 @@ openwebui:
               description: "Enable authentication (default: true)"
             - name: CHARLY_MCP_SERVERS
               description: "JSON array of MCP servers (auto-injected by mcp_provide layers)"
+            # The entrypoint forwards this to BOTH CODE_EXECUTION_* and CODE_INTERPRETER_*
+            # when a jupyter MCP server is detected, but nothing could provide it: no
+            # env_accept existed, so an authenticated Jupyter needed `charly config -e`.
+            - name: CODE_EXECUTION_JUPYTER_AUTH_TOKEN
+              description: "Jupyter auth token for the code-execution engine (auto-injected by a jupyter candy env_provide)"
+            # Contract participation, NOT consumption: the immich candy env_provides this
+            # URL and names openwebui as a consumer. Open Web UI itself has no immich
+            # integration, so nothing in this image reads it — the accept is what lets the
+            # immich compose hand the value over without a "no acceptor" gap. Removing it
+            # would break that documented pairing; using it would need an immich feature
+            # upstream that does not exist.
             - name: IMMICH_API_URL
-              description: "Immich HTTP API URL (auto-injected by immich layer env_provides)"
+              description: "Immich HTTP API URL from the immich candy's env_provide (accepted for the compose contract; Open Web UI has no immich integration, so it is not consumed)"
         # Credential-store-backed env vars. Values live in the user's credential
         # backend (keyring/config) and are injected at runtime via podman
         # secrets (Secret=<name>,type=env,target=<var>). Never land in deploy.yml
@@ -61,10 +72,10 @@ openwebui:
               description: "API key for Ollama Cloud inference"
               key: charly/api-key/ollama
             - name: OPENAI_API_KEY
-              description: "Direct OpenAI API key"
+              description: "Direct OpenAI API key (alone it is enough — the base URL defaults to https://api.openai.com/v1)"
               key: charly/api-key/openai
             - name: IMMICH_API_KEY
-              description: "Immich API key for programmatic access to the running immich instance"
+              description: "Immich API key from the shared charly/api-key/immich credential (accepted for the compose contract; not consumed by Open Web UI)"
               key: charly/api-key/immich
         mcp_accept:
             - name: jupyter
