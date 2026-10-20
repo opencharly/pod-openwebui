@@ -2,7 +2,10 @@
 set -euo pipefail
 
 # Open WebUI auto-configuration entrypoint.
-# ENABLE_PERSISTENT_CONFIG=false means env vars always win — no sentinel needed.
+# ENABLE_PERSISTENT_CONFIG=false keeps the database from ever overriding env:
+# upstream's Config.get() answers from the env-built defaults on every read, so
+# no sentinel is needed. (Admin-panel edits then live in process memory only —
+# they are never persisted, and the next start re-derives everything from here.)
 
 # --- Data directory ---
 mkdir -p "$DATA_DIR"
@@ -80,13 +83,17 @@ except json.JSONDecodeError:
 tool_connections = []
 jupyter_url = ""
 for srv in servers:
+    # info.id is the server's IDENTITY, not decoration: Open WebUI keys the tool
+    # id (`server:mcp:<id>`, routers/tools.py), the connected-client map, the
+    # OAuth client key and the access-control lookup on it. An empty id collapses
+    # every MCP server onto one identity — use the (contract-unique) server name.
     conn = {
         "type": "mcp",
         "url": srv["url"],
         "spec_type": "url", "spec": "", "path": "",
         "auth_type": "", "key": "",
         "config": {"enable": True},
-        "info": {"id": "", "name": srv["name"], "description": f"MCP: {srv['name']}"}
+        "info": {"id": srv["name"], "name": srv["name"], "description": f"MCP: {srv['name']}"}
     }
     tool_connections.append(conn)
     # Detect jupyter by name or port pattern
@@ -149,4 +156,6 @@ export WEBUI_ADMIN_NAME="${WEBUI_ADMIN_NAME:-Admin}"
 
 echo "openwebui-entrypoint: admin account: $WEBUI_ADMIN_EMAIL"
 echo "openwebui-entrypoint: starting Open WebUI on port ${PORT:-8080}"
-exec open-webui serve
+# `open-webui serve` takes the port as a Typer option and never reads $PORT
+# (open_webui/__init__.py), so the declared env has to be passed through here.
+exec open-webui serve --port "${PORT:-8080}"

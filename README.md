@@ -6,13 +6,14 @@ auto-configuring entrypoint, served as a supervised HTTP service on port `8080`.
 
 ## What it provides
 
-Installs the Open WebUI server (the `open-webui` PyPI package via pixi) and copies
-a bash auto-config entrypoint to `${HOME}/.local/bin/openwebui-entrypoint` (mode
-0755). A supervised system service runs that entrypoint, which wires up LLM
-providers from env/secrets (OpenRouter, Ollama Cloud, direct OpenAI, local
-Ollama, MCP servers, and Jupyter code execution), enforces mandatory admin
-credentials (`WEBUI_ADMIN_EMAIL` + `WEBUI_ADMIN_PASSWORD`), reads the
-auto-generated `WEBUI_SECRET_KEY`, then execs `open-webui serve` on port `8080`.
+Installs Open Web UI (the `open-webui` PyPI package, pinned to **0.12.3** in
+`pixi.toml`, via pixi) and copies a bash auto-config entrypoint to
+`${HOME}/.local/bin/openwebui-entrypoint` (mode 0755). A supervised system service
+runs that entrypoint, which wires up LLM providers from env/secrets (OpenRouter,
+Ollama Cloud, direct OpenAI, local Ollama, MCP servers, and Jupyter code execution),
+enforces mandatory admin credentials (`WEBUI_ADMIN_EMAIL` + `WEBUI_ADMIN_PASSWORD`),
+reads the auto-generated `WEBUI_SECRET_KEY`, then execs
+`open-webui serve --port $PORT` on port `8080`.
 
 | Property | Value |
 |---|---|
@@ -32,6 +33,13 @@ value via the credential store; retrieve it with
 `charly secrets get charly/secret WEBUI_ADMIN_PASSWORD`. Provider API keys live in
 the credential backend and are injected at runtime via podman secrets — never in
 plaintext in the deploy.
+
+`WEBUI_SECRET_KEY` is a credential the image never ships: Open Web UI 0.12.3 refuses
+to start without it once authentication is on, so the candy provisions it once per
+deployment (podman secret `charly-openwebui-webui-secret-key`) and keeps it stable —
+losing it invalidates every session and stored OAuth token. `PORT` is passed to
+`open-webui serve` explicitly, because upstream's `serve` takes the listen port as an
+argument and does not read the environment.
 
 ## How to use it
 
