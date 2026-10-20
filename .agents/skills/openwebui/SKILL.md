@@ -9,7 +9,7 @@ description: 'Open WebUI box with auto-configured LLM providers, MCP servers, an
 
 # Box: openwebui
 
-Open WebUI with auto-configured LLM providers (Ollama, OpenRouter), MCP server discovery, and Jupyter code execution. No manual setup needed — secrets auto-managed via `charly secrets`.
+Open WebUI with auto-configured LLM providers (Ollama, OpenRouter), MCP server discovery, and Jupyter code execution. No manual setup needed — secrets are credential-backed and auto-wired.
 
 Pinned to **Open WebUI 0.12.3** (`pixi.toml`). The upstream contract this candy
 depends on is recorded under "Upstream contract" below — read it before changing
@@ -225,7 +225,9 @@ charly cmd openwebui "printenv OPENAI_API_BASE_URLS OPENAI_API_KEYS OLLAMA_BASE_
 `WEBUI_ADMIN_PASSWORD` and `WEBUI_SECRET_KEY` arrive as podman secrets that charly
 projects into the container environment (the entrypoint additionally falls back to
 reading `/run/secrets/webui-secret-key`), so the `printenv` lines above are the
-runtime witness and the `charly secrets` store is the readable source of the value.
+runtime witness. The readable source of the value is the credential backend
+(`~/.config/charly/config.yml` → `keyring_keys: charly/secret/<NAME>`); the
+`charly secrets get` read-back needs the `secrets` command plugin (#995).
 
 ## Upstream contract (Open WebUI 0.12.3)
 
