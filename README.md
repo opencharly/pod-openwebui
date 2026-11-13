@@ -6,7 +6,7 @@ auto-configuring entrypoint, served as a supervised HTTP service on port `8080`.
 
 ## What it provides
 
-Installs Open Web UI (the `open-webui` PyPI package, pinned to **0.12.3** in
+Installs Open Web UI (the `open-webui` PyPI package, pinned to **0.13.3** in
 `pixi.toml`, via pixi) and copies a bash auto-config entrypoint to
 `${HOME}/.local/bin/openwebui-entrypoint` (mode 0755). A supervised system service
 runs that entrypoint, which wires up LLM providers from env/secrets (OpenRouter,
@@ -46,7 +46,7 @@ Open Web UI has no immich integration, so this candy accepts neither `IMMICH_API
 `immich` candy self-accepts its own URL), and a compose of the two generates and runs the same
 without them. `hermes` remains the real consumer of the immich provide.
 
-`WEBUI_SECRET_KEY` is a credential the image never ships: Open Web UI 0.12.3 refuses
+`WEBUI_SECRET_KEY` is a credential the image never ships: Open Web UI 0.13.3 refuses
 to start without it once authentication is on, so the candy provisions it once per
 deployment (podman secret `charly-openwebui-webui-secret-key`) and keeps it stable —
 losing it invalidates every session and stored OAuth token. `PORT` is passed to
