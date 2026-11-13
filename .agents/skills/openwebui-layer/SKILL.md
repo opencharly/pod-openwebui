@@ -92,10 +92,14 @@ charly config openwebui --env-file .secrets     # Decrypts + injects at config t
 The `openwebui-entrypoint` runs on EVERY start (no sentinel — `ENABLE_PERSISTENT_CONFIG=false` means env vars always override database config):
 
 1. **Reads secrets** from env vars (podman `type=env`) or `/run/secrets/` file mounts
-2. **LLM provider detection**:
-   - `OLLAMA_HOST` -> `OLLAMA_BASE_URL` (Ollama server)
-   - `OPENROUTER_API_KEY` -> `OPENAI_API_KEY` + `OPENAI_API_BASE_URL=https://openrouter.ai/api/v1`
-   - `OLLAMA_API_KEY` -> `OPENAI_API_KEY` + `OPENAI_API_BASE_URL=https://api.ollama.com/v1`
+2. **LLM provider detection** (each provider APPENDS to the plural, index-aligned
+   `OPENAI_API_BASE_URLS` / `OPENAI_API_KEYS` lists, so OpenRouter, Ollama Cloud and a
+   direct OpenAI-compatible endpoint can be live at once):
+   - `OLLAMA_HOST` -> `ENABLE_OLLAMA_API=true` + `OLLAMA_BASE_URL` (native Ollama API)
+   - `OPENROUTER_API_KEY` -> `https://openrouter.ai/api/v1` + the key
+   - `OLLAMA_API_KEY` -> `https://ollama.com/v1` + the key (Ollama Cloud)
+   - `OPENAI_API_KEY` -> the key, against `OPENAI_API_BASE_URL` when set, else
+     `https://api.openai.com/v1` (the key alone declares the provider)
 3. **MCP server discovery** from `CHARLY_MCP_SERVERS` JSON -> builds `TOOL_SERVER_CONNECTIONS` JSON for Open WebUI
 4. **Jupyter detection** — if a jupyter MCP server URL is found, sets `CODE_EXECUTION_ENGINE=jupyter`
 5. **Execs** `open-webui serve`
@@ -111,11 +115,14 @@ The entrypoint translates charly's `CHARLY_MCP_SERVERS` format into Open WebUI's
   "spec_type": "url", "spec": "", "path": "",
   "auth_type": "", "key": "",
   "config": {"enable": true},
-  "info": {"id": "", "name": "jupyter", "description": "MCP: jupyter"}
+  "info": {"id": "jupyter", "name": "jupyter", "description": "MCP: jupyter"}
 }]
 ```
 
-**Key fields**: `type` must be `"mcp"` (not `"openapi"`), `config.enable` must be `true`.
+**Key fields**: `type` must be `"mcp"` (not `"openapi"`), `config.enable` must be `true`, and
+`info.id` is the server's identity (Open Web UI keys the tool id, the connected-client map and
+the access-control lookup on it) — an empty id collapses every MCP server onto one identity, so
+the entrypoint sets it to the server name.
 
 ## Key Design Choice: `ENABLE_PERSISTENT_CONFIG=false`
 
