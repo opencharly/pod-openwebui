@@ -183,19 +183,21 @@ openwebui:
                 - contains: "STT_ENGINE=openai"
                 - contains: "STT_BASE=http://charly-whisper:9000/v1"
                 - contains: "STT_MODEL=base"
+                - contains: "STT_KEY=probe-whisper-key"
               command: |
                 mkdir -p /tmp/ep-stub
-                printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\necho "STT_BASE=$AUDIO_STT_OPENAI_API_BASE_URL"\necho "STT_MODEL=$AUDIO_STT_MODEL"\n' > /tmp/ep-stub/open-webui
+                printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\necho "STT_BASE=$AUDIO_STT_OPENAI_API_BASE_URL"\necho "STT_MODEL=$AUDIO_STT_MODEL"\necho "STT_KEY=$AUDIO_STT_OPENAI_API_KEY"\n' > /tmp/ep-stub/open-webui
                 chmod 0755 /tmp/ep-stub/open-webui
-                env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u AUDIO_STT_ENGINE -u AUDIO_STT_OPENAI_API_BASE_URL -u AUDIO_STT_MODEL -u AUDIO_STT_OPENAI_API_KEY WHISPER_BASE_URL=http://charly-whisper:9000/v1 WHISPER_MODEL=base PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+                env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u AUDIO_STT_ENGINE -u AUDIO_STT_OPENAI_API_BASE_URL -u AUDIO_STT_MODEL -u AUDIO_STT_OPENAI_API_KEY WHISPER_BASE_URL=http://charly-whisper:9000/v1 WHISPER_MODEL=base WHISPER_API_KEY=probe-whisper-key PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
             - check: with no whisper server the entrypoint claims no remote STT engine
               id: entrypoint-whisper-absent
               exit_status: 0
               stdout:
                 - contains: "STT_ENGINE="
+                - contains: "STT_KEY="
               command: |
                 mkdir -p /tmp/ep-stub
-                printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\n' > /tmp/ep-stub/open-webui
+                printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\necho "STT_KEY=$AUDIO_STT_OPENAI_API_KEY"\n' > /tmp/ep-stub/open-webui
                 chmod 0755 /tmp/ep-stub/open-webui
                 env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u AUDIO_STT_ENGINE -u AUDIO_STT_OPENAI_API_BASE_URL -u AUDIO_STT_MODEL -u AUDIO_STT_OPENAI_API_KEY -u WHISPER_BASE_URL -u WHISPER_MODEL PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
             - check: the mandatory admin email is injected into the running service environment
