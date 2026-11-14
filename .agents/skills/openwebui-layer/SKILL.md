@@ -54,7 +54,12 @@ Open Web UI's image generation talks to a ComfyUI server through its `comfyui` e
 `IMAGE_GENERATION_ENGINE=comfyui` as a constant; the SERVER is per deploy, and generation stays OFF until an
 operator turns it on, so a deploy with no ComfyUI behind it never advertises a broken feature.
 
-Minimal wiring — a ComfyUI deployment and a URL:
+**One caveat before the wiring.** `IMAGE_GENERATION_ENGINE` is an IMAGE-level default: an image built BEFORE
+this contract carries no engine at all. On such an image, pass it explicitly (it is also an
+`env_accept` row) or rebuild the image — otherwise the engine is unset and generation stays off even
+though the URL is right. The same applies to any future change of the default.
+
+Minimal wiring — a ComfyUI deployment and a URL (on an image built from this candy version):
 
 ```bash
 # 1. the image server (its own deploy; a GPU is required)
@@ -65,7 +70,8 @@ charly config openwebui -i lab -e WEBUI_ADMIN_EMAIL=you@example.com \
 ```
 
 A ComfyUI deploy that declares `env_provide: COMFYUI_BASE_URL` injects the URL itself, in which case only
-`ENABLE_IMAGE_GENERATION=true` is needed. Both pods must share a pod network for the DNS name to resolve —
+`ENABLE_IMAGE_GENERATION=true` is needed. On a pre-existing image add `-e IMAGE_GENERATION_ENGINE=comfyui`:
+the default lives in the image, so an older image has none. Both pods must share a pod network for the DNS name to resolve —
 that is what makes `http://<comfyui-deploy-name>:8188` work rather than a host port.
 
 The generated images land in the deployment's own data volume through Open Web UI; ComfyUI's own

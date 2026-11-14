@@ -40,6 +40,8 @@ openwebui:
               description: "ComfyUI server base URL, e.g. http://charly-comfyui-lab:8188 (a comfyui deploy can provide it). Setting it together with ENABLE_IMAGE_GENERATION=true turns on Open WebUI's ComfyUI image generation."
             - name: ENABLE_IMAGE_GENERATION
               description: "Turn on image generation (set to true once COMFYUI_BASE_URL is present). Off by default so an unrelated deploy does not advertise a feature whose server is absent."
+            - name: IMAGE_GENERATION_ENGINE
+              description: "Engine word for image generation (default: comfyui, baked into the image). Pass it explicitly when deploying an image built BEFORE this contract, which carries no default."
             - name: COMFYUI_WORKFLOW_NODES
               description: "JSON map of the workflow nodes that carry prompt/negative_prompt/width/height/batch size/steps/seed. Optional — leave unset to use Open WebUI's built-in default workflow node ids."
             - name: OLLAMA_HOST
