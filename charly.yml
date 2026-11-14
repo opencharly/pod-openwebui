@@ -24,10 +24,24 @@ openwebui:
             ENABLE_CODE_EXECUTION: "true"
             ENABLE_PERSISTENT_CONFIG: "false"
             ENABLE_VERSION_UPDATE_CHECK: "false"
+            # Image generation speaks to a ComfyUI server through this engine. The ENGINE is a
+            # constant of the wiring; the SERVER URL is per deploy (see COMFYUI_BASE_URL below),
+            # and generation stays off until an operator turns it on with
+            # ENABLE_IMAGE_GENERATION=true — see the two accepts below.
+            IMAGE_GENERATION_ENGINE: comfyui
         env_require:
             - name: WEBUI_ADMIN_EMAIL
               description: "Admin account email (identifier, not a credential) — pass via: charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com"
         env_accept:
+            # --- Image generation (ComfyUI) -------------------------------------------------
+            # A ComfyUI deploy can inject COMFYUI_BASE_URL itself through env_provide, so the
+            # common case is: deploy comfyui, then point this deploy at it by name.
+            - name: COMFYUI_BASE_URL
+              description: "ComfyUI server base URL, e.g. http://charly-comfyui-lab:8188 (a comfyui deploy can provide it). Setting it together with ENABLE_IMAGE_GENERATION=true turns on Open WebUI's ComfyUI image generation."
+            - name: ENABLE_IMAGE_GENERATION
+              description: "Turn on image generation (set to true once COMFYUI_BASE_URL is present). Off by default so an unrelated deploy does not advertise a feature whose server is absent."
+            - name: COMFYUI_WORKFLOW_NODES
+              description: "JSON map of the workflow nodes that carry prompt/negative_prompt/width/height/batch size/steps/seed. Optional — leave unset to use Open WebUI's built-in default workflow node ids."
             - name: OLLAMA_HOST
               description: "Local Ollama server URL (auto-injected by ollama layer env_provides)"
             - name: OPENAI_API_BASE_URL
