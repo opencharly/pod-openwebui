@@ -16,6 +16,11 @@ openwebui:
         require:
             - '@github.com/opencharly/layer-python:v2026.293.1922'
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
+            # pydub is a hard dependency of open-webui and needs the ffmpeg BINARY:
+            # Open Web UI transcodes any non-MP3 speech response through it, and an
+            # absent binary turns a WAV reply into a 500. Measured on the deployed
+            # pod: pydub present, ffmpeg missing.
+            - '@github.com/opencharly/layer-ffmpeg:v2026.272.0056'
         env:
             DATA_DIR: "/opt/data"
             PORT: "8080"
@@ -41,6 +46,21 @@ openwebui:
             # env_accept existed, so an authenticated Jupyter needed `charly config -e`.
             - name: CODE_EXECUTION_JUPYTER_AUTH_TOKEN
               description: "Jupyter auth token for the code-execution engine (auto-injected by a jupyter candy env_provide)"
+            # Speech synthesis. A provider candy declares QWEN3_TTS_HOST (an
+            # OpenAI-compatible base URL ending in /v1); the entrypoint turns it
+            # into Open WebUI's AUDIO_TTS_* pair. Without this declaration the
+            # provide is filtered out and no amount of --update-all helps.
+            - name: QWEN3_TTS_HOST
+              description: "OpenAI-compatible speech (TTS) base URL, e.g. http://charly-qwen3-tts:8000/v1 (auto-injected by a qwen3-tts candy env_provide)"
+            - name: QWEN3_TTS_SERVED_MODEL
+              description: "Model id the speech server answers for (auto-injected; Open WebUI forces it into every speech request)"
+            - name: QWEN3_TTS_VOICE
+              description: "Default voice id for speech synthesis (auto-injected; must exist on the speech server)"
+            # The entrypoint reads this one, so it MUST be declared here: an undeclared
+            # provide is filtered out by `charly config --update-all` and the key would
+            # silently never arrive.
+            - name: QWEN3_TTS_API_KEY
+              description: "Bearer key the speech server expects (auto-injected; optional — a keyless server needs none)"
 
         # Credential-store-backed env vars. Values live in the user's credential
         # backend (keyring/config) and are injected at runtime via podman
@@ -172,6 +192,37 @@ openwebui:
               addr:
                 addr: 127.0.0.1:${HOST_PORT:8080}
                 reachable: true
+            # Speech synthesis is a PAIR, and the pairing is the whole point:
+            # AUDIO_TTS_OPENAI_API_BASE_URL defaults to OPENAI_API_BASE_URL — the
+            # LLM server — so an engine set alone would POST speech requests at the
+            # chat backend and surface as "Server Connection Error". This witness
+            # proves the pair moves together, and that nothing is invented when no
+            # provider is present. Build scope on purpose (no `context:`): `check
+            # live` runs verify-only and would skip it.
+            - check: the entrypoint projects the OpenAI TTS pair from the speech provide
+              id: entrypoint-tts-projection
+              exit_status: 0
+              stdout:
+                - contains: "TTS_ENGINE=xopenai"
+                - contains: "TTS_BASE=xhttp://charly-qwen3-tts:8000/v1"
+                - contains: 'TTS_PARAMS=x{"response_format":"mp3"}'
+                - contains: "TTS_KEY=xnot-needed"
+              command: |
+                mkdir -p /tmp/tts-stub
+                printf '#!/bin/sh\necho "TTS_ENGINE=x$AUDIO_TTS_ENGINE"\necho "TTS_BASE=x$AUDIO_TTS_OPENAI_API_BASE_URL"\necho "TTS_PARAMS=x$AUDIO_TTS_OPENAI_PARAMS"\necho "TTS_KEY=x$AUDIO_TTS_OPENAI_API_KEY"\n' > /tmp/tts-stub/open-webui
+                chmod 0755 /tmp/tts-stub/open-webui
+                env -u AUDIO_TTS_ENGINE -u AUDIO_TTS_OPENAI_API_BASE_URL -u AUDIO_TTS_OPENAI_API_KEY -u AUDIO_TTS_OPENAI_PARAMS -u AUDIO_TTS_MODEL -u AUDIO_TTS_VOICE QWEN3_TTS_HOST=http://charly-qwen3-tts:8000/v1 QWEN3_TTS_SERVED_MODEL=qwen3-tts QWEN3_TTS_VOICE=vivian PATH=/tmp/tts-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/tts-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: with no speech provide the entrypoint invents no TTS engine
+              id: entrypoint-tts-absent
+              exit_status: 0
+              stdout:
+                - contains: "TTS_ENGINE=x"
+                - not_contains: "xopenai"
+              command: |
+                mkdir -p /tmp/tts-stub
+                printf '#!/bin/sh\necho "TTS_ENGINE=x$AUDIO_TTS_ENGINE"\necho "TTS_BASE=x$AUDIO_TTS_OPENAI_API_BASE_URL"\n' > /tmp/tts-stub/open-webui
+                chmod 0755 /tmp/tts-stub/open-webui
+                env -u QWEN3_TTS_HOST -u AUDIO_TTS_ENGINE -u AUDIO_TTS_OPENAI_API_BASE_URL -u AUDIO_TTS_OPENAI_API_KEY -u AUDIO_TTS_OPENAI_PARAMS PATH=/tmp/tts-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/tts-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
 
 openwebui-skill:
     skill:
