@@ -41,6 +41,16 @@ openwebui:
             # env_accept existed, so an authenticated Jupyter needed `charly config -e`.
             - name: CODE_EXECUTION_JUPYTER_AUTH_TOKEN
               description: "Jupyter auth token for the code-execution engine (auto-injected by a jupyter candy env_provide)"
+            # Speech-to-text. WHISPER_BASE_URL is auto-injected by the whisper candy's
+            # env_provide; WHISPER_MODEL rides along so AUDIO_STT_MODEL can name the
+            # checkpoint the server actually serves. NOTE the deliberate name overlap:
+            # Open Web UI's LOCAL-lane model var is also called WHISPER_MODEL, but only one
+            # engine is live at a time (AUDIO_STT_ENGINE is a single value), so the meaning
+            # coincides and a second name would be two names for one thing.
+            - name: WHISPER_BASE_URL
+              description: "Whisper ASR server base URL ending in /v1 (auto-injected by the whisper layer env_provide)"
+            - name: WHISPER_MODEL
+              description: "Checkpoint the whisper server serves; forwarded to Open Web UI as AUDIO_STT_MODEL"
 
         # Credential-store-backed env vars. Values live in the user's credential
         # backend (keyring/config) and are injected at runtime via podman
@@ -67,6 +77,9 @@ openwebui:
             - name: OPENAI_API_KEY
               description: "Direct OpenAI API key (alone it is enough — the base URL defaults to https://api.openai.com/v1)"
               key: charly/api-key/openai
+            - name: WHISPER_API_KEY
+              description: "Bearer token for the whisper ASR server; the SAME credential the whisper candy reads, so both ends agree"
+              key: charly/api-key/whisper
 
         mcp_accept:
             - name: jupyter
@@ -158,6 +171,33 @@ openwebui:
                 printf '#!/bin/sh\nif [ -z "$OPENAI_API_BASE_URLS" ]; then echo "PROJECTED=none"; else echo "PROJECTED=$OPENAI_API_BASE_URLS"; fi\n' > /tmp/ep-stub/open-webui
                 chmod 0755 /tmp/ep-stub/open-webui
                 env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            # The STT projection has no other committed witness, so both arms are asserted
+            # HERE as BUILD-scope checks against a stub `open-webui` that echoes what the
+            # entrypoint WOULD exec (the same shape as entrypoint-openai-key-alone above).
+            # Bare $VAR names inside the stub body, never ${VAR}: the check runner scans a
+            # step's body for unresolvable upper-case ${...} tokens and SKIPS the step.
+            - check: with a whisper server provided the entrypoint projects the remote STT engine
+              id: entrypoint-whisper-present
+              exit_status: 0
+              stdout:
+                - contains: "STT_ENGINE=openai"
+                - contains: "STT_BASE=http://charly-whisper:9000/v1"
+                - contains: "STT_MODEL=base"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\necho "STT_BASE=$AUDIO_STT_OPENAI_API_BASE_URL"\necho "STT_MODEL=$AUDIO_STT_MODEL"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u AUDIO_STT_ENGINE -u AUDIO_STT_OPENAI_API_BASE_URL -u AUDIO_STT_MODEL -u AUDIO_STT_OPENAI_API_KEY WHISPER_BASE_URL=http://charly-whisper:9000/v1 WHISPER_MODEL=base PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: with no whisper server the entrypoint claims no remote STT engine
+              id: entrypoint-whisper-absent
+              exit_status: 0
+              stdout:
+                - contains: "STT_ENGINE="
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u AUDIO_STT_ENGINE -u AUDIO_STT_OPENAI_API_BASE_URL -u AUDIO_STT_MODEL -u AUDIO_STT_OPENAI_API_KEY -u WHISPER_BASE_URL -u WHISPER_MODEL PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
             - check: the mandatory admin email is injected into the running service environment
               exit_status: 0
               context:
