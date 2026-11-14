@@ -78,8 +78,11 @@ fi
 # send every speech request to the wrong service and surface as a connection
 # error. The API key is pinned too, for the same reason: it inherits
 # OPENAI_API_KEY, i.e. the chat credential, which the speech server has no
-# business receiving. response_format=mp3 because Open Web UI transcodes any
-# non-MP3 response through pydub and this image ships no ffmpeg.
+# business receiving. response_format=mp3 is a preference, not a requirement:
+# this candy now REQUIRES layer-ffmpeg (pydub is a hard dependency of
+# open-webui and its binary was missing — issue #20), so a WAV reply is
+# transcoded correctly too. mp3 is kept as the default because it makes the
+# consumer's ".mp3"-named speech cache coherent and skips that transcode.
 if [ -n "${QWEN3_TTS_HOST:-}" ]; then
     export AUDIO_TTS_ENGINE="openai"
     export AUDIO_TTS_OPENAI_API_BASE_URL="$QWEN3_TTS_HOST"
