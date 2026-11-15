@@ -87,6 +87,27 @@ openwebui:
               description: "Whisper ASR server base URL ending in /v1 (auto-injected by the whisper layer env_provide)"
             - name: WHISPER_MODEL
               description: "Checkpoint the whisper server serves; forwarded to Open Web UI as AUDIO_STT_MODEL"
+            # RAG vector store. QDRANT_URL is the name the qdrant layer PROVIDES
+            # (layer-qdrant's env_provide); provides are name-matched, so this entry must
+            # carry the PROVIDER's name — the entrypoint maps it onto Open WebUI's native
+            # QDRANT_URI. Declaring QDRANT_URI here would inject nothing at all.
+            - name: QDRANT_URL
+              description: "Qdrant REST endpoint, e.g. http://charly-qdrant:6333 (auto-injected by the qdrant layer env_provide); present + a QDRANT_API_KEY turns the RAG vector store into Qdrant"
+            # Optional pass-throughs, upstream names verbatim — no renaming layer. Each is
+            # read by Open WebUI's config.py as a plain os.getenv (not PersistentConfig),
+            # so env is the only way to set them and the admin panel cannot persist any.
+            - name: QDRANT_ON_DISK
+              description: "Store Qdrant collections on disk (upstream QDRANT_ON_DISK, default false)"
+            - name: QDRANT_COLLECTION_PREFIX
+              description: "Prefix for the multi-tenant collections (upstream default 'open-webui')"
+            - name: QDRANT_PREFER_GRPC
+              description: "Use gRPC instead of REST for Qdrant (upstream QDRANT_PREFER_GRPC, default false)"
+            - name: QDRANT_GRPC_PORT
+              description: "Qdrant gRPC port when QDRANT_PREFER_GRPC is set (upstream default 6334)"
+            - name: ENABLE_QDRANT_MULTITENANCY_MODE
+              description: "Qdrant multi-tenancy mode (upstream default true — tenanted open-webui_* collections)"
+            - name: QDRANT_TIMEOUT
+              description: "Qdrant client timeout in seconds (upstream default 5)"
 
         # Credential-store-backed env vars. Values live in the user's credential
         # backend (keyring/config) and are injected at runtime via podman
@@ -116,6 +137,14 @@ openwebui:
             - name: WHISPER_API_KEY
               description: "Bearer token for the whisper ASR server; the SAME credential the whisper candy reads, so both ends agree"
               key: charly/api-key/whisper
+            # The qdrant admin key is the PROVIDER's credential, not a second copy: the qdrant
+            # layer's secret_require generates it at charly/api-key/qdrant, and this accept
+            # reads the same stored value (both ends agree, like the whisper key above).
+            # Never an env_provide — that would write the key into the image's
+            # ai.opencharly.env_provide OCI label in cleartext.
+            - name: QDRANT_API_KEY
+              description: "Qdrant admin API key (the key the qdrant layer generates and stores at charly/api-key/qdrant); required whenever QDRANT_URL is present"
+              key: charly/api-key/qdrant
 
         mcp_accept:
             - name: jupyter
@@ -236,6 +265,40 @@ openwebui:
                 printf '#!/bin/sh\necho "STT_ENGINE=$AUDIO_STT_ENGINE"\necho "STT_KEY=$AUDIO_STT_OPENAI_API_KEY"\n' > /tmp/ep-stub/open-webui
                 chmod 0755 /tmp/ep-stub/open-webui
                 env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u AUDIO_STT_ENGINE -u AUDIO_STT_OPENAI_API_BASE_URL -u AUDIO_STT_MODEL -u AUDIO_STT_OPENAI_API_KEY -u WHISPER_BASE_URL -u WHISPER_MODEL PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            # The vector-store projection has no other committed witness, so all three arms are
+            # asserted HERE as BUILD-scope checks against the same stub (bare $VAR names, never
+            # ${VAR} — an unresolvable upper-case token makes the runner SKIP the step).
+            - check: the entrypoint switches the RAG vector store to Qdrant when QDRANT_URL is provided, mapping the qdrant layer's provided name onto the QDRANT_URI upstream actually reads
+              id: entrypoint-qdrant-wired
+              exit_status: 0
+              stdout:
+                - contains: "VECTORSTORE=qdrant"
+                - contains: "PROJECTED=http://localhost:6333"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\nif [ -z "$QDRANT_URI" ]; then echo "VECTORSTORE=none"; else echo "VECTORSTORE=$VECTOR_DB"; echo "PROJECTED=$QDRANT_URI"; fi\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u WHISPER_BASE_URL -u WHISPER_MODEL -u WHISPER_API_KEY QDRANT_URL=http://localhost:6333 QDRANT_API_KEY=probe-key PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: with no qdrant variables the entrypoint invents no vector store and upstream keeps its Chroma default — an unconfigured deployment must not change behaviour
+              id: entrypoint-qdrant-absent
+              exit_status: 0
+              stdout:
+                - contains: "VECTORSTORE=none"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\nif [ -z "$QDRANT_URI" ]; then echo "VECTORSTORE=none"; else echo "VECTORSTORE=$VECTOR_DB"; echo "PROJECTED=$QDRANT_URI"; fi\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u WHISPER_BASE_URL -u WHISPER_MODEL -u WHISPER_API_KEY -u QDRANT_URL -u QDRANT_API_KEY PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: a QDRANT_URL with no resolvable QDRANT_API_KEY fails loud instead of falling back — an optional secret_accept that misses is otherwise SILENT, and a keyless Qdrant only fails later as a 401 behind a 503
+              id: entrypoint-qdrant-key-missing
+              exit_status: 1
+              stdout:
+                - contains: "QDRANT_API_KEY did not resolve"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\nif [ -z "$QDRANT_URI" ]; then echo "VECTORSTORE=none"; else echo "VECTORSTORE=$VECTOR_DB"; echo "PROJECTED=$QDRANT_URI"; fi\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN -u WHISPER_BASE_URL -u WHISPER_MODEL -u WHISPER_API_KEY -u QDRANT_API_KEY QDRANT_URL=http://localhost:6333 PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint 2>&1
             - check: the mandatory admin email is injected into the running service environment
               exit_status: 0
               context:
