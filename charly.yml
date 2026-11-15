@@ -16,6 +16,11 @@ openwebui:
         require:
             - '@github.com/opencharly/layer-python:v2026.293.1922'
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
+            # pydub is a hard dependency of open-webui and needs the ffmpeg BINARY:
+            # Open Web UI transcodes any non-MP3 speech response through it, and an
+            # absent binary turns a WAV reply into a 500. Measured on the deployed
+            # pod: pydub present, ffmpeg missing.
+            - '@github.com/opencharly/layer-ffmpeg:v2026.272.0056'
         env:
             DATA_DIR: "/opt/data"
             PORT: "8080"
@@ -24,10 +29,26 @@ openwebui:
             ENABLE_CODE_EXECUTION: "true"
             ENABLE_PERSISTENT_CONFIG: "false"
             ENABLE_VERSION_UPDATE_CHECK: "false"
+            # Image generation speaks to a ComfyUI server through this engine. The ENGINE is a
+            # constant of the wiring; the SERVER URL is per deploy (see COMFYUI_BASE_URL below),
+            # and generation stays off until an operator turns it on with
+            # ENABLE_IMAGE_GENERATION=true — see the two accepts below.
+            IMAGE_GENERATION_ENGINE: comfyui
         env_require:
             - name: WEBUI_ADMIN_EMAIL
               description: "Admin account email (identifier, not a credential) — pass via: charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com"
         env_accept:
+            # --- Image generation (ComfyUI) -------------------------------------------------
+            # A ComfyUI deploy can inject COMFYUI_BASE_URL itself through env_provide, so the
+            # common case is: deploy comfyui, then point this deploy at it by name.
+            - name: COMFYUI_BASE_URL
+              description: "ComfyUI server base URL, e.g. http://charly-comfyui-lab:8188 (a comfyui deploy can provide it). Setting it together with ENABLE_IMAGE_GENERATION=true turns on Open WebUI's ComfyUI image generation."
+            - name: ENABLE_IMAGE_GENERATION
+              description: "Turn on image generation (set to true once COMFYUI_BASE_URL is present). Off by default so an unrelated deploy does not advertise a feature whose server is absent."
+            - name: IMAGE_GENERATION_ENGINE
+              description: "Engine word for image generation (default: comfyui, baked into the image). Pass it explicitly when deploying an image built BEFORE this contract, which carries no default."
+            - name: COMFYUI_WORKFLOW_NODES
+              description: "JSON map of the workflow nodes that carry prompt/negative_prompt/width/height/batch size/steps/seed. Optional — leave unset to use Open WebUI's built-in default workflow node ids."
             - name: OLLAMA_HOST
               description: "Local Ollama server URL (auto-injected by ollama layer env_provides)"
             - name: OPENAI_API_BASE_URL
@@ -41,6 +62,21 @@ openwebui:
             # env_accept existed, so an authenticated Jupyter needed `charly config -e`.
             - name: CODE_EXECUTION_JUPYTER_AUTH_TOKEN
               description: "Jupyter auth token for the code-execution engine (auto-injected by a jupyter candy env_provide)"
+            # Speech synthesis. A provider candy declares QWEN3_TTS_HOST (an
+            # OpenAI-compatible base URL ending in /v1); the entrypoint turns it
+            # into Open WebUI's AUDIO_TTS_* pair. Without this declaration the
+            # provide is filtered out and no amount of --update-all helps.
+            - name: QWEN3_TTS_HOST
+              description: "OpenAI-compatible speech (TTS) base URL, e.g. http://charly-qwen3-tts:8000/v1 (auto-injected by a qwen3-tts candy env_provide)"
+            - name: QWEN3_TTS_SERVED_MODEL
+              description: "Model id the speech server answers for (auto-injected; Open WebUI forces it into every speech request)"
+            - name: QWEN3_TTS_VOICE
+              description: "Default voice id for speech synthesis (auto-injected; must exist on the speech server)"
+            # The entrypoint reads this one, so it MUST be declared here: an undeclared
+            # provide is filtered out by `charly config --update-all` and the key would
+            # silently never arrive.
+            - name: QWEN3_TTS_API_KEY
+              description: "Bearer key the speech server expects (auto-injected; optional — a keyless server needs none)"
             # Speech-to-text. WHISPER_BASE_URL is auto-injected by the whisper candy's
             # env_provide; WHISPER_MODEL rides along so AUDIO_STT_MODEL can name the
             # checkpoint the server actually serves. NOTE the deliberate name overlap:
@@ -214,6 +250,37 @@ openwebui:
               addr:
                 addr: 127.0.0.1:${HOST_PORT:8080}
                 reachable: true
+            # Speech synthesis is a PAIR, and the pairing is the whole point:
+            # AUDIO_TTS_OPENAI_API_BASE_URL defaults to OPENAI_API_BASE_URL — the
+            # LLM server — so an engine set alone would POST speech requests at the
+            # chat backend and surface as "Server Connection Error". This witness
+            # proves the pair moves together, and that nothing is invented when no
+            # provider is present. Build scope on purpose (no `context:`): `check
+            # live` runs verify-only and would skip it.
+            - check: the entrypoint projects the OpenAI TTS pair from the speech provide
+              id: entrypoint-tts-projection
+              exit_status: 0
+              stdout:
+                - contains: "TTS_ENGINE=xopenai"
+                - contains: "TTS_BASE=xhttp://charly-qwen3-tts:8000/v1"
+                - contains: 'TTS_PARAMS=x{"response_format":"mp3"}'
+                - contains: "TTS_KEY=xnot-needed"
+              command: |
+                mkdir -p /tmp/tts-stub
+                printf '#!/bin/sh\necho "TTS_ENGINE=x$AUDIO_TTS_ENGINE"\necho "TTS_BASE=x$AUDIO_TTS_OPENAI_API_BASE_URL"\necho "TTS_PARAMS=x$AUDIO_TTS_OPENAI_PARAMS"\necho "TTS_KEY=x$AUDIO_TTS_OPENAI_API_KEY"\n' > /tmp/tts-stub/open-webui
+                chmod 0755 /tmp/tts-stub/open-webui
+                env -u AUDIO_TTS_ENGINE -u AUDIO_TTS_OPENAI_API_BASE_URL -u AUDIO_TTS_OPENAI_API_KEY -u AUDIO_TTS_OPENAI_PARAMS -u AUDIO_TTS_MODEL -u AUDIO_TTS_VOICE QWEN3_TTS_HOST=http://charly-qwen3-tts:8000/v1 QWEN3_TTS_SERVED_MODEL=qwen3-tts QWEN3_TTS_VOICE=vivian PATH=/tmp/tts-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/tts-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: with no speech provide the entrypoint invents no TTS engine
+              id: entrypoint-tts-absent
+              exit_status: 0
+              stdout:
+                - contains: "TTS_ENGINE=x"
+                - not_contains: "xopenai"
+              command: |
+                mkdir -p /tmp/tts-stub
+                printf '#!/bin/sh\necho "TTS_ENGINE=x$AUDIO_TTS_ENGINE"\necho "TTS_BASE=x$AUDIO_TTS_OPENAI_API_BASE_URL"\n' > /tmp/tts-stub/open-webui
+                chmod 0755 /tmp/tts-stub/open-webui
+                env -u QWEN3_TTS_HOST -u AUDIO_TTS_ENGINE -u AUDIO_TTS_OPENAI_API_BASE_URL -u AUDIO_TTS_OPENAI_API_KEY -u AUDIO_TTS_OPENAI_PARAMS PATH=/tmp/tts-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/tts-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
 
 openwebui-skill:
     skill:

@@ -70,6 +70,31 @@ else
     export ENABLE_OLLAMA_API="false"
 fi
 
+# --- Speech synthesis (TTS) from a provided OpenAI-compatible speech server ---
+# QWEN3_TTS_HOST is injected by a provider candy's env_provide (see env_accept).
+# The ENGINE and its BASE URL are projected as a PAIR on purpose: Open Web UI
+# defaults AUDIO_TTS_OPENAI_API_BASE_URL to OPENAI_API_BASE_URL, which on a pod
+# with an LLM provider is the CHAT server — so setting the engine alone would
+# send every speech request to the wrong service and surface as a connection
+# error. The API key is pinned too, for the same reason: it inherits
+# OPENAI_API_KEY, i.e. the chat credential, which the speech server has no
+# business receiving. response_format=mp3 is a preference, not a requirement:
+# this candy now REQUIRES layer-ffmpeg (pydub is a hard dependency of
+# open-webui and its binary was missing — issue #20), so a WAV reply is
+# transcoded correctly too. mp3 is kept as the default because it makes the
+# consumer's ".mp3"-named speech cache coherent and skips that transcode.
+if [ -n "${QWEN3_TTS_HOST:-}" ]; then
+    export AUDIO_TTS_ENGINE="openai"
+    export AUDIO_TTS_OPENAI_API_BASE_URL="$QWEN3_TTS_HOST"
+    export AUDIO_TTS_OPENAI_API_KEY="${QWEN3_TTS_API_KEY:-not-needed}"
+    export AUDIO_TTS_MODEL="${QWEN3_TTS_SERVED_MODEL:-qwen3-tts}"
+    export AUDIO_TTS_VOICE="${QWEN3_TTS_VOICE:-vivian}"
+    if [ -z "${AUDIO_TTS_OPENAI_PARAMS:-}" ]; then
+        export AUDIO_TTS_OPENAI_PARAMS='{"response_format":"mp3"}'
+    fi
+    echo "openwebui-entrypoint: TTS (speech) at $AUDIO_TTS_OPENAI_API_BASE_URL"
+fi
+
 # --- Speech-to-text (whisper ASR server) ---
 # Open Web UI's STT engine values are '' (built-in local faster-whisper) | openai |
 # deepgram | azure | mistral. There is NO 'local' value and there is no enable gate — the
