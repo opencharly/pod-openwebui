@@ -8,3 +8,9 @@ python = ">=3.11,<3.13"
 
 [pypi-dependencies]
 open-webui = "==0.13.3"
+# Upstream declares qdrant-client ONLY under the `all` extra, so the base package
+# leaves VECTOR_DB=qdrant without its connector import — the factory builds the client
+# while routers/retrieval is imported, so the app would not boot at all.
+# Pin the upstream-tested version explicitly (NOT open-webui[all], which drags in
+# playwright/colbert/oracledb/azure-search/weaviate/pinecone as well).
+qdrant-client = "==1.18.0"

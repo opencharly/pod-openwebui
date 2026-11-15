@@ -200,6 +200,49 @@ UI's `ToolServerConnection` model accepts (`routers/configs.py`):
   (`utils/access_control/__init__.py:164-169`). That is sufficient here: creating the
   admin from env disables signup, so the deployment has exactly one account.
 
+## Vector store: Qdrant as the RAG backend
+
+The RAG vector store is configured **by environment only** — `VECTOR_DB`, `QDRANT_URI` and
+`QDRANT_API_KEY` are plain module-level `os.getenv` reads upstream (`config.py:483,593-601`),
+not `PersistentConfig` rows, so `ENABLE_PERSISTENT_CONFIG=false` neither helps nor hurts and
+the admin panel cannot persist a vector-store choice. The candy maps the qdrant pod's provide
+onto them in the entrypoint:
+
+| Side | Name | How it arrives |
+|---|---|---|
+| provider (`layer-qdrant`) | `QDRANT_URL` | `env_provide: http://{{.ContainerName}}:6333` |
+| consumer (this candy) | `QDRANT_URL` | `env_accept` — the PROVIDER's name; provides are name-matched, so `QDRANT_URI` here would inject nothing |
+| Open Web UI | `QDRANT_URI` | the entrypoint's one hop: `export QDRANT_URI="$QDRANT_URL"` |
+| credential | `QDRANT_API_KEY` | `secret_accept` with `key: charly/api-key/qdrant` (podman secret) |
+| Open Web UI | `VECTOR_DB=qdrant` | the entrypoint, only when the URL resolved |
+
+```bash
+charly config qdrant                     # provider FIRST: records QDRANT_URL + generates the key
+charly config openwebui                  # consumer: injects QDRANT_URL + QDRANT_API_KEY
+charly start qdrant openwebui
+```
+
+Rules that are load-bearing:
+
+- **Both or neither.** `QDRANT_URL` without a resolvable `QDRANT_API_KEY` makes the entrypoint
+  exit non-zero with the remedy — an optional `secret_accept` that misses is silently omitted,
+  and a keyless Qdrant only fails later as a 401 behind a 503.
+- **`qdrant-client` must be in the pixi env.** Upstream declares it only under the `all` extra;
+  `VECTOR_DB=qdrant` without the package fails the CONNECTOR IMPORT at startup (the client is
+  built while `routers/retrieval` is imported), so the server does not boot at all. `pixi.toml`
+  pins `qdrant-client` explicitly — never `open-webui[all]`.
+- **The provider must be configured before the consumer** (the provide lives in the per-host
+  deploy state), and both containers must share the `charly` podman network for
+  `http://charly-qdrant:6333` to resolve. `charly update <consumer>` re-injects provides.
+- **Embeddings are a second axis.** Upstream defaults to
+  `sentence-transformers/all-MiniLM-L6-v2` (384-dim) and downloads it on first use; the
+  official image pre-bakes it, this candy does not, so an offline host needs the model baked or
+  `RAG_EMBEDDING_ENGINE` pointed at a provider. The collection dimension is fixed at the FIRST
+  upsert, so changing the model later means deleting the `open-webui_*` collections.
+- Collections are multi-tenant by default (`ENABLE_QDRANT_MULTITENANCY_MODE=true`):
+  `open-webui_knowledge`, `open-webui_files`, `open-webui_memories`, `open-webui_web-search`,
+  `open-webui_hash-based`, tenanted by a payload `tenant_id`.
+
 ## Key Candies
 
 - `/charly-openwebui:openwebui` — Auto-config entrypoint, secrets, env_accept, TOOL_SERVER_CONNECTIONS format

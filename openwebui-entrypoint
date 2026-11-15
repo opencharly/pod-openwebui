@@ -127,6 +127,32 @@ else
     echo "openwebui-entrypoint: no whisper server provided; STT stays on the upstream default (local)" >&2
 fi
 
+# --- RAG vector store (Qdrant) ---
+# QDRANT_URL arrives from the qdrant layer's env_provide (name-matched: the provider's
+# name is QDRANT_URL, Open WebUI's own variable is QDRANT_URI — this one hop is the whole
+# translation). The admin key arrives from the credential store via secret_accept. Both,
+# or neither: an optional secret_accept that misses is silently omitted, and a keyless
+# Qdrant only fails later as a 401 behind a 503 — so the partial case is loud HERE.
+# VECTOR_DB and QDRANT_URI are plain module-level os.getenv reads in config.py (not
+# PersistentConfig), so these exports are the only way to move the vector store off the
+# in-container Chroma default; the admin panel cannot persist a vector-store choice.
+if [ -n "${QDRANT_URL:-}" ]; then
+    if [ -z "${QDRANT_API_KEY:-}" ]; then
+        echo "" >&2
+        echo "ERROR: QDRANT_URL is set but QDRANT_API_KEY did not resolve." >&2
+        echo "" >&2
+        echo "The qdrant layer stores its admin key at charly/api-key/qdrant. Deploy" >&2
+        echo "qdrant first (its secret_require generates the key), or set it with:" >&2
+        echo "" >&2
+        echo "  charly secrets set charly/api-key qdrant <value>" >&2
+        echo "" >&2
+        exit 1
+    fi
+    export VECTOR_DB="qdrant"
+    export QDRANT_URI="$QDRANT_URL"
+    echo "openwebui-entrypoint: Qdrant vector store at $QDRANT_URI"
+fi
+
 # --- MCP Servers + Jupyter from CHARLY_MCP_SERVERS ---
 if [ -n "${CHARLY_MCP_SERVERS:-}" ]; then
     eval "$(python3 - "$CHARLY_MCP_SERVERS" "${CODE_EXECUTION_JUPYTER_AUTH_TOKEN:-}" <<'PYEOF'
