@@ -95,6 +95,38 @@ if [ -n "${QWEN3_TTS_HOST:-}" ]; then
     echo "openwebui-entrypoint: TTS (speech) at $AUDIO_TTS_OPENAI_API_BASE_URL"
 fi
 
+# --- Speech-to-text (whisper ASR server) ---
+# Open Web UI's STT engine values are '' (built-in local faster-whisper) | openai |
+# deepgram | azure | mistral. There is NO 'local' value and there is no enable gate — the
+# engine value IS the switch. Its client APPENDS '/audio/transcriptions' to the configured
+# base URL, so WHISPER_BASE_URL must end in /v1 (measured: routers/audio/__init__.py:924,942
+# at v0.13.3). The server's reply must carry a top-level `text`.
+if [ -n "${WHISPER_BASE_URL:-}" ]; then
+    export AUDIO_STT_ENGINE="openai"
+    export AUDIO_STT_OPENAI_API_BASE_URL="${WHISPER_BASE_URL%/}"   # no trailing slash
+
+    # The model name belongs WITH the model: forwarded when the provider supplies one, and
+    # left empty otherwise (Open Web UI then sends `model=` and the server answers with the
+    # checkpoint IT is serving). A fabricated default here would be a silent wrong value.
+    if [ -n "${WHISPER_MODEL:-}" ]; then
+        export AUDIO_STT_MODEL="${WHISPER_MODEL}"
+    fi
+
+    # MEASURED TRAP: AUDIO_STT_OPENAI_API_KEY defaults to OPENAI_API_KEY (config.py:1588),
+    # so leaving it unset in a KEYED whisper deployment would ship the CHAT provider's
+    # credential to the ASR server and take a 401. Forward the whisper key when present.
+    if [ -n "${WHISPER_API_KEY:-}" ]; then
+        export AUDIO_STT_OPENAI_API_KEY="${WHISPER_API_KEY}"
+    fi
+
+    echo "openwebui-entrypoint: STT via whisper at ${AUDIO_STT_OPENAI_API_BASE_URL} (model ${AUDIO_STT_MODEL:-server default})"
+else
+    # An absent provider must NOT be advertised as a remote engine: without this branch a
+    # deployment with no whisper server would still claim engine=openai and turn every voice
+    # memo into a 500. Leave the upstream default (local faster-whisper) and say so.
+    echo "openwebui-entrypoint: no whisper server provided; STT stays on the upstream default (local)" >&2
+fi
+
 # --- MCP Servers + Jupyter from CHARLY_MCP_SERVERS ---
 if [ -n "${CHARLY_MCP_SERVERS:-}" ]; then
     eval "$(python3 - "$CHARLY_MCP_SERVERS" "${CODE_EXECUTION_JUPYTER_AUTH_TOKEN:-}" <<'PYEOF'
