@@ -114,16 +114,20 @@ openwebui:
         # secrets (Secret=<name>,type=env,target=<var>). Never land in deploy.yml
         # or the quadlet file as plaintext. See /charly-build:secrets and /charly-image:layer.
         #
-        # WEBUI_ADMIN_PASSWORD: auto-generated on first deploy as 32 random bytes
-        # in url-safe base64 (44 characters) by deploykit.GenerateAndStoreSecret
-        # (sdk/deploykit/secret_provision.go) writing through verb:credential.
-        # To use the auto-generated password to log in for the first time:
-        #   charly secrets get charly/secret WEBUI_ADMIN_PASSWORD
-        # To override with a specific value before deploying:
-        #   charly secrets set charly/secret WEBUI_ADMIN_PASSWORD <password>
+        # WEBUI_ADMIN_PASSWORD is REQUIRED. When the deploy runs with --password=auto it is
+        # auto-generated as 32 random bytes in url-safe base64 (44 characters) by
+        # deploykit.GenerateAndStoreSecret (sdk/deploykit/secret_provision.go) writing through
+        # verb:credential; without that flag `charly config` stops on the missing-secret error and
+        # the value must be stored first. Making the pod path generate unconditionally, as the
+        # VM/host path already does, is opencharly/plugin-deploy-pod#62.
+        # The credential key is HOST-GLOBAL today — every deployment of this candy (and every
+        # `check-*` bed) writes the same one and the last writer wins; scoping it per deploy is
+        # opencharly/pod-openwebui#19.
+        #   charly secrets get charly/secret WEBUI_ADMIN_PASSWORD      # retrieve
+        #   charly secrets set charly/secret WEBUI_ADMIN_PASSWORD <pw> # set before deploying
         secret_require:
             - name: WEBUI_ADMIN_PASSWORD
-              description: "Initial admin account password for Open WebUI first-run setup. Auto-generated on first deploy as 32 random bytes in url-safe base64 (44 characters); retrieve via `charly secrets get charly/secret WEBUI_ADMIN_PASSWORD`."
+              description: "Initial admin account password for Open WebUI first-run setup. Generated as 32 random bytes in url-safe base64 (44 characters) when the deploy runs with --password=auto; without that flag it must be stored first (opencharly/plugin-deploy-pod#62). The credential key is host-global today — shared by every deployment of this candy, last writer wins (opencharly/pod-openwebui#19); retrieve with `charly secrets get charly/secret WEBUI_ADMIN_PASSWORD`."
         secret_accept:
             - name: OPENROUTER_API_KEY
               description: "API key for OpenRouter (maps to OPENAI_API_KEY with OpenRouter base URL)"
