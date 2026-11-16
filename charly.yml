@@ -114,16 +114,16 @@ openwebui:
         # secrets (Secret=<name>,type=env,target=<var>). Never land in deploy.yml
         # or the quadlet file as plaintext. See /charly-build:secrets and /charly-image:layer.
         #
-        # WEBUI_ADMIN_PASSWORD: auto-generated on first deploy as a 32-byte hex
-        # random value via DefaultCredentialStore.Set (see charly/layer_secrets.go
-        # ensureLayerSecret). To use the auto-generated password to log in for
-        # the first time:
+        # WEBUI_ADMIN_PASSWORD: auto-generated on first deploy as 32 random bytes
+        # in url-safe base64 (44 characters) by deploykit.GenerateAndStoreSecret
+        # (sdk/deploykit/secret_provision.go) writing through verb:credential.
+        # To use the auto-generated password to log in for the first time:
         #   charly secrets get charly/secret WEBUI_ADMIN_PASSWORD
         # To override with a specific value before deploying:
         #   charly secrets set charly/secret WEBUI_ADMIN_PASSWORD <password>
         secret_require:
             - name: WEBUI_ADMIN_PASSWORD
-              description: "Initial admin account password for Open WebUI first-run setup. Auto-generated on first deploy; retrieve via `charly secrets get charly/secret WEBUI_ADMIN_PASSWORD`."
+              description: "Initial admin account password for Open WebUI first-run setup. Auto-generated on first deploy as 32 random bytes in url-safe base64 (44 characters); retrieve via `charly secrets get charly/secret WEBUI_ADMIN_PASSWORD`."
         secret_accept:
             - name: OPENROUTER_API_KEY
               description: "API key for OpenRouter (maps to OPENAI_API_KEY with OpenRouter base URL)"

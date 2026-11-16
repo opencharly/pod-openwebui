@@ -44,7 +44,7 @@ openwebui:
 ```bash
 charly box build openwebui
 charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com \
-                        -e WEBUI_ADMIN_PASSWORD=<32-byte hex> \
+                        -e WEBUI_ADMIN_PASSWORD=<strong-password> \
                         -e OPENROUTER_API_KEY=sk-or-xxx
 charly start openwebui
 # Open http://localhost:8080
@@ -122,7 +122,7 @@ provisioned value from the credential backend (`~/.config/charly/config.yml` →
 ```bash
 # Tier 1: admin password (credential store -> podman secret)
 charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com \
-                        -e WEBUI_ADMIN_PASSWORD=<32-byte hex>
+                        -e WEBUI_ADMIN_PASSWORD=<strong-password>
 
 # Tier 1: what is provisioned for this deploy (works without the secrets plugin)
 charly status openwebui          # the Secrets: line lists charly-openwebui-*
