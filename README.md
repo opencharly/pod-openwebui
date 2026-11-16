@@ -30,7 +30,7 @@ reads the auto-generated `WEBUI_SECRET_KEY`, then execs
 
 `WEBUI_ADMIN_PASSWORD` is a required credential, so the `charly config` path will not
 proceed without one: with no value it stops on `missing required credential-backed
-secret(s)`, and `charly config openwebui -e WEBUI_ADMIN_PASSWORD=<32-byte hex>` imports
+secret(s)`, and `charly config openwebui -e WEBUI_ADMIN_PASSWORD=<strong-password>` imports
 it into the credential backend, strips it from the deploy, and injects it as the podman
 secret `charly-openwebui-webui-admin-password`. Provider API keys work the same way —
 never in plaintext in the deploy.
@@ -58,7 +58,7 @@ argument and does not read the environment.
 ```bash
 charly box build openwebui
 charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com \
-  -e WEBUI_ADMIN_PASSWORD=<32-byte hex> \
+  -e WEBUI_ADMIN_PASSWORD=<strong-password> \
   -e OPENROUTER_API_KEY=sk-or-xxx
 charly start openwebui
 # Open http://localhost:8080

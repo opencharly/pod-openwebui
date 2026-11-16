@@ -123,11 +123,19 @@ Auto-generated, stored in credential store (keyring/config-file fallback):
 
 Provisioned as `Secret=charly-openwebui-<name>,type=env,target=<ENV>` in the quadlet. The entrypoint checks env vars first (from `type=env` injection), then file mounts at `/run/secrets/` as fallback.
 
-**First-run admin login:** `WEBUI_ADMIN_PASSWORD` auto-generates as a 32-byte hex random value if not pre-set. To retrieve the auto-generated password and log in for the first time:
+**First-run admin login:** `WEBUI_ADMIN_PASSWORD` is required. It auto-generates as **32 random
+bytes in url-safe base64 (44 characters)** — the shape `deploykit.GenerateAndStoreSecret` produces —
+when the deploy runs with `--password=auto`; without that flag `charly config` stops on
+`missing required credential-backed secret(s)` and the value must be stored first. (Making the pod
+path generate unconditionally, as the VM/host path already does, is
+opencharly/plugin-deploy-pod#62.) To retrieve the stored password and log in for the first time:
 
 ```bash
 charly secrets get charly/secret WEBUI_ADMIN_PASSWORD
 ```
+
+That key is **host-global today**: every deployment of this candy (and every `check-*` bed) writes
+the same one, so the last deploy wins — opencharly/pod-openwebui#19 tracks scoping it per deploy.
 
 Override with a specific password before the first deploy:
 

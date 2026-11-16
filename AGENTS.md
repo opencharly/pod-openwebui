@@ -54,8 +54,11 @@ Canonical files:
   is the owning skill's source — a candy change and its skill change land
   together.
 - `WEBUI_ADMIN_EMAIL` is `env_require` (mandatory); `WEBUI_ADMIN_PASSWORD` is
-  `secret_require` (auto-generated on first deploy). Never put credentials in the
-  plan — provider keys are `secret_accept` entries injected via podman secrets.
+  `secret_require` — required first, and generated (32 random bytes, url-safe base64) only when the
+  deploy runs with `--password=auto` (pod/VM parity: opencharly/plugin-deploy-pod#62). Its credential
+  key is host-global today, so every deployment of this candy shares it
+  (opencharly/pod-openwebui#19). Never put credentials in the plan — provider keys are
+  `secret_accept` entries injected via podman secrets.
 - Python dependency changes belong in `pixi.toml` / `pixi.lock`, not in the plan.
 - The `data` volume at `/opt/data`, the `DATA_DIR` / `PORT` env, and the
   `mcp_accept` server names must stay in step with the entrypoint's wiring.
