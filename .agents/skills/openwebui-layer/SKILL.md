@@ -28,7 +28,6 @@ description: 'Open WebUI with auto-configured LLM providers, MCP servers, and Ju
 | `DATA_DIR` | `/opt/data` |
 | `PORT` | `8080` |
 | `DOCKER` | `true` |
-| `ENABLE_DIRECT_CONNECTIONS` | `true` |
 | `ENABLE_CODE_EXECUTION` | `true` |
 | `ENABLE_PERSISTENT_CONFIG` | `false` |
 
