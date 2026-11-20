@@ -99,8 +99,9 @@ fi
 # Open Web UI's STT engine values are '' (built-in local faster-whisper) | openai |
 # deepgram | azure | mistral. There is NO 'local' value and there is no enable gate — the
 # engine value IS the switch. Its client APPENDS '/audio/transcriptions' to the configured
-# base URL, so WHISPER_BASE_URL must end in /v1 (measured: routers/audio/__init__.py:924,942
-# at v0.13.3). The server's reply must carry a top-level `text`.
+# base URL, so WHISPER_BASE_URL must end in /v1 (measured at v0.13.3:
+# routers/audio/__init__.py:924,942; the names are unchanged in v0.13.4). The server's
+# reply must carry a top-level `text`.
 if [ -n "${WHISPER_BASE_URL:-}" ]; then
     export AUDIO_STT_ENGINE="openai"
     export AUDIO_STT_OPENAI_API_BASE_URL="${WHISPER_BASE_URL%/}"   # no trailing slash
