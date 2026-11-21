@@ -102,6 +102,14 @@ index-aligned, so OpenRouter + Ollama Cloud + a self-hosted endpoint can be live
 once. With no `OLLAMA_HOST` the entrypoint sets `ENABLE_OLLAMA_API=false` (upstream
 defaults it to true), so an absent Ollama never appears as a failing provider.
 
+**Every projection is a DEFAULT, and the operator always wins.** Each value above is
+written as `${VAR:-derived}`, never as an unconditional assignment, so a deployment can
+set Open Web UI's own variable directly — `OPENAI_API_BASE_URLS`, `AUDIO_TTS_*`,
+`AUDIO_STT_*`, `VECTOR_DB`/`QDRANT_URI`, `TOOL_SERVER_CONNECTIONS`, `CODE_*`,
+`OLLAMA_BASE_URL`, `ENABLE_OLLAMA_API` — and the entrypoint keeps it, filling only what
+was left unset (opencharly/pod-openwebui#29). A provider's value is never discarded
+silently: if the entrypoint did not derive it, the operator's value is what runs.
+
 ## Secrets Management
 
 `WEBUI_ADMIN_PASSWORD` is a `secret_require:` entry, so it lives in the credential

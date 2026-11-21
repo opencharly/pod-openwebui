@@ -239,6 +239,101 @@ openwebui:
                 printf '#!/bin/sh\nif [ -z "$OPENAI_API_BASE_URLS" ]; then echo "PROJECTED=none"; else echo "PROJECTED=$OPENAI_API_BASE_URLS"; fi\n' > /tmp/ep-stub/open-webui
                 chmod 0755 /tmp/ep-stub/open-webui
                 env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            # The operator's OWN value must win over every provider derivation (opencharly/pod-openwebui#29):
+            # a pod has to accept every variable its service documents. The derived arms above prove the
+            # projection still happens when the operator is silent; this arm proves it does not overwrite.
+            - check: an operator-set provider variable survives the entrypoint unchanged
+              id: entrypoint-operator-env-wins
+              exit_status: 0
+              stdout:
+                - contains: "OA=https://operator.example/v1"
+                - contains: "OK=sk-operator"
+                - contains: "TTS=http://operator-tts:8000/v1|operator-tts-key|operator-tts-model|operator-voice"
+                - contains: "STT=http://operator-whisper:9000/v1"
+                - contains: "VEC=pqdrant|http://operator-qdrant:6333"
+                - contains: "OLB=http://operator-ollama:11434"
+                - contains: "MCP=[{\"operator\":true}]"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "OA=$OPENAI_API_BASE_URLS"\necho "OK=$OPENAI_API_KEYS"\necho "TTS=$AUDIO_TTS_OPENAI_API_BASE_URL|$AUDIO_TTS_OPENAI_API_KEY|$AUDIO_TTS_MODEL|$AUDIO_TTS_VOICE"\necho "STT=$AUDIO_STT_OPENAI_API_BASE_URL"\necho "VEC=$VECTOR_DB|$QDRANT_URI"\necho "OLB=$OLLAMA_BASE_URL"\necho "MCP=$TOOL_SERVER_CONNECTIONS"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env OPENROUTER_API_KEY=sk-or-derived OPENAI_API_KEY=sk-derived OLLAMA_API_KEY=ollama-derived \
+                  QWEN3_TTS_HOST=http://derived-tts:8000 WHISPER_BASE_URL=http://derived-whisper:9000/v1 \
+                  QDRANT_URL=http://derived-qdrant:6333 QDRANT_API_KEY=derived-qdrant-key OLLAMA_HOST=http://derived-ollama:11434 \
+                  CHARLY_MCP_SERVERS='[{"name":"m","url":"http://mcp:1/mcp"}]' \
+                  OPENAI_API_BASE_URLS=https://operator.example/v1 OPENAI_API_KEYS=sk-operator \
+                  ENABLE_OLLAMA_API=true OLLAMA_BASE_URL=http://operator-ollama:11434 \
+                  AUDIO_TTS_ENGINE=openai AUDIO_TTS_OPENAI_API_BASE_URL=http://operator-tts:8000/v1 \
+                  AUDIO_TTS_OPENAI_API_KEY=operator-tts-key AUDIO_TTS_MODEL=operator-tts-model AUDIO_TTS_VOICE=operator-voice \
+                  AUDIO_STT_ENGINE=openai AUDIO_STT_OPENAI_API_BASE_URL=http://operator-whisper:9000/v1 \
+                  VECTOR_DB=pqdrant QDRANT_URI=http://operator-qdrant:6333 \
+                  TOOL_SERVER_CONNECTIONS='[{"operator":true}]' \
+                  PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data \
+                  WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+
+            # --- Jupyter code execution: the derived arm and the operator-wins arm -------------
+            # The CODE_* half of the same contract. The provider is CHARLY_MCP_SERVERS; the entrypoint
+            # detects a server named `jupyter` (or a url carrying 8888/mcp) and derives the whole set.
+            - check: with a jupyter provider the entrypoint derives the code-execution set
+              id: entrypoint-jupyter-projection
+              exit_status: 0
+              stdout:
+                - contains: "CE_ENGINE=jupyter"
+                - contains: "CE_URL=http://jupyter:8888"
+                - contains: "CE_AUTH=token"
+                - contains: "CE_TIMEOUT=60"
+                - contains: "CI_ENGINE=jupyter"
+                - contains: "CI_URL=http://jupyter:8888"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "CE_ENGINE=$CODE_EXECUTION_ENGINE"\necho "CE_URL=$CODE_EXECUTION_JUPYTER_URL"\necho "CE_AUTH=$CODE_EXECUTION_JUPYTER_AUTH"\necho "CE_TIMEOUT=$CODE_EXECUTION_JUPYTER_TIMEOUT"\necho "CI_ENGINE=$CODE_INTERPRETER_ENGINE"\necho "CI_URL=$CODE_INTERPRETER_JUPYTER_URL"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env CHARLY_MCP_SERVERS='[{"name":"jupyter","url":"http://jupyter:8888/mcp"}]' \
+                  OPENAI_API_KEY=probe-key PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data \
+                  WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            - check: an operator-set CODE_* value survives the entrypoint's Jupyter projection
+              id: entrypoint-code-env-wins
+              exit_status: 0
+              stdout:
+                - contains: "CE_ENGINE=operator-engine"
+                - contains: "CE_URL=http://operator-jupyter:8888"
+                - contains: "CE_AUTH=operator-auth"
+                - contains: "CE_TIMEOUT=99"
+                - contains: "CE_TOKEN=operator-exec-token"
+                - contains: "CI_ENGINE=operator-interp"
+                - contains: "CI_URL=http://operator-jupyter-i:8888"
+                - contains: "CI_AUTH=operator-interp-auth"
+                - contains: "CI_TIMEOUT=98"
+                - contains: "CI_TOKEN=operator-interp-token"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "CE_ENGINE=$CODE_EXECUTION_ENGINE"\necho "CE_URL=$CODE_EXECUTION_JUPYTER_URL"\necho "CE_AUTH=$CODE_EXECUTION_JUPYTER_AUTH"\necho "CE_TIMEOUT=$CODE_EXECUTION_JUPYTER_TIMEOUT"\necho "CE_TOKEN=$CODE_EXECUTION_JUPYTER_AUTH_TOKEN"\necho "CI_ENGINE=$CODE_INTERPRETER_ENGINE"\necho "CI_URL=$CODE_INTERPRETER_JUPYTER_URL"\necho "CI_AUTH=$CODE_INTERPRETER_JUPYTER_AUTH"\necho "CI_TIMEOUT=$CODE_INTERPRETER_JUPYTER_TIMEOUT"\necho "CI_TOKEN=$CODE_INTERPRETER_JUPYTER_AUTH_TOKEN"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env CHARLY_MCP_SERVERS='[{"name":"jupyter","url":"http://jupyter:8888/mcp"}]' \
+                  CODE_EXECUTION_ENGINE=operator-engine CODE_EXECUTION_JUPYTER_URL=http://operator-jupyter:8888 \
+                  CODE_EXECUTION_JUPYTER_AUTH=operator-auth CODE_EXECUTION_JUPYTER_TIMEOUT=99 \
+                  CODE_EXECUTION_JUPYTER_AUTH_TOKEN=operator-exec-token \
+                  CODE_INTERPRETER_ENGINE=operator-interp CODE_INTERPRETER_JUPYTER_URL=http://operator-jupyter-i:8888 \
+                  CODE_INTERPRETER_JUPYTER_AUTH=operator-interp-auth CODE_INTERPRETER_JUPYTER_TIMEOUT=98 \
+                  CODE_INTERPRETER_JUPYTER_AUTH_TOKEN=operator-interp-token \
+                  OPENAI_API_KEY=probe-key PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data \
+                  WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            # An operator who points OLLAMA_BASE_URL at their own server and sets no OLLAMA_HOST used to
+            # get the URL preserved but the switch forced OFF — an enabled-looking value that was ignored.
+            - check: an operator-set OLLAMA_BASE_URL with no OLLAMA_HOST enables the Ollama provider
+              id: entrypoint-ollama-url-enables
+              exit_status: 0
+              stdout:
+                - contains: "OLLAMA_ENABLED=true"
+                - contains: "OLLAMA_URL=http://operator-ollama:11434"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "OLLAMA_ENABLED=$ENABLE_OLLAMA_API"\necho "OLLAMA_URL=$OLLAMA_BASE_URL"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env -u OLLAMA_HOST -u ENABLE_OLLAMA_API OLLAMA_BASE_URL=http://operator-ollama:11434 \
+                  OPENAI_API_KEY=probe-key PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data \
+                  WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+
             # The STT projection has no other committed witness, so both arms are asserted
             # HERE as BUILD-scope checks against a stub `open-webui` that echoes what the
             # entrypoint WOULD exec (the same shape as entrypoint-openai-key-alone above).
