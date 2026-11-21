@@ -239,6 +239,38 @@ openwebui:
                 printf '#!/bin/sh\nif [ -z "$OPENAI_API_BASE_URLS" ]; then echo "PROJECTED=none"; else echo "PROJECTED=$OPENAI_API_BASE_URLS"; fi\n' > /tmp/ep-stub/open-webui
                 chmod 0755 /tmp/ep-stub/open-webui
                 env -u OPENAI_API_KEY -u OPENAI_API_BASE_URL -u OPENROUTER_API_KEY -u OLLAMA_API_KEY -u OLLAMA_HOST -u CHARLY_MCP_SERVERS -u CODE_EXECUTION_JUPYTER_AUTH_TOKEN PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+            # The operator's OWN value must win over every provider derivation (opencharly/pod-openwebui#29):
+            # a pod has to accept every variable its service documents. The derived arms above prove the
+            # projection still happens when the operator is silent; this arm proves it does not overwrite.
+            - check: an operator-set provider variable survives the entrypoint unchanged
+              id: entrypoint-operator-env-wins
+              exit_status: 0
+              stdout:
+                - contains: "OA=https://operator.example/v1"
+                - contains: "OK=sk-operator"
+                - contains: "TTS=http://operator-tts:8000/v1|operator-tts-key|operator-tts-model|operator-voice"
+                - contains: "STT=http://operator-whisper:9000/v1"
+                - contains: "VEC=pqdrant|http://operator-qdrant:6333"
+                - contains: "OLB=http://operator-ollama:11434"
+                - contains: "MCP=[{\"operator\":true}]"
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "OA=$OPENAI_API_BASE_URLS"\necho "OK=$OPENAI_API_KEYS"\necho "TTS=$AUDIO_TTS_OPENAI_API_BASE_URL|$AUDIO_TTS_OPENAI_API_KEY|$AUDIO_TTS_MODEL|$AUDIO_TTS_VOICE"\necho "STT=$AUDIO_STT_OPENAI_API_BASE_URL"\necho "VEC=$VECTOR_DB|$QDRANT_URI"\necho "OLB=$OLLAMA_BASE_URL"\necho "MCP=$TOOL_SERVER_CONNECTIONS"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                env OPENROUTER_API_KEY=sk-or-derived OPENAI_API_KEY=sk-derived OLLAMA_API_KEY=ollama-derived \
+                  QWEN3_TTS_HOST=http://derived-tts:8000 WHISPER_BASE_URL=http://derived-whisper:9000/v1 \
+                  QDRANT_URL=http://derived-qdrant:6333 QDRANT_API_KEY=derived-qdrant-key OLLAMA_HOST=http://derived-ollama:11434 \
+                  CHARLY_MCP_SERVERS='[{"name":"m","url":"http://mcp:1/mcp"}]' \
+                  OPENAI_API_BASE_URLS=https://operator.example/v1 OPENAI_API_KEYS=sk-operator \
+                  ENABLE_OLLAMA_API=true OLLAMA_BASE_URL=http://operator-ollama:11434 \
+                  AUDIO_TTS_ENGINE=openai AUDIO_TTS_OPENAI_API_BASE_URL=http://operator-tts:8000/v1 \
+                  AUDIO_TTS_OPENAI_API_KEY=operator-tts-key AUDIO_TTS_MODEL=operator-tts-model AUDIO_TTS_VOICE=operator-voice \
+                  AUDIO_STT_ENGINE=openai AUDIO_STT_OPENAI_API_BASE_URL=http://operator-whisper:9000/v1 \
+                  VECTOR_DB=pqdrant QDRANT_URI=http://operator-qdrant:6333 \
+                  TOOL_SERVER_CONNECTIONS='[{"operator":true}]' \
+                  PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data \
+                  WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe ~/.local/bin/openwebui-entrypoint
+
             # The STT projection has no other committed witness, so both arms are asserted
             # HERE as BUILD-scope checks against a stub `open-webui` that echoes what the
             # entrypoint WOULD exec (the same shape as entrypoint-openai-key-alone above).

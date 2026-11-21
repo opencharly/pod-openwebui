@@ -6,6 +6,11 @@ set -euo pipefail
 # upstream's Config.get() answers from the env-built defaults on every read, so
 # no sentinel is needed. (Admin-panel edits then live in process memory only —
 # they are never persisted, and the next start re-derives everything from here.)
+#
+# EVERY provider-derived value below is a DEFAULT (`${VAR:-derived}`), never an
+# assignment that overwrites: a deployment must be able to use any variable its
+# service documents, so an operator's explicit value always wins and the
+# derivation only fills what was left unset (opencharly/pod-openwebui#29).
 
 # --- Data directory ---
 mkdir -p "$DATA_DIR"
@@ -57,17 +62,19 @@ if [ -n "${OPENAI_API_KEY:-}" ]; then
 fi
 
 if [ -n "$URLS" ]; then
-    export OPENAI_API_BASE_URLS="$URLS"
-    export OPENAI_API_KEYS="$KEYS"
+    export OPENAI_API_BASE_URLS="${OPENAI_API_BASE_URLS:-$URLS}"
+    export OPENAI_API_KEYS="${OPENAI_API_KEYS:-$KEYS}"
 fi
 
 # Local Ollama (native API, only when OLLAMA_HOST is provided by env_provides)
 if [ -n "${OLLAMA_HOST:-}" ]; then
-    export ENABLE_OLLAMA_API="true"
-    export OLLAMA_BASE_URL="$OLLAMA_HOST"
+    export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-true}"
+    export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-$OLLAMA_HOST}"
     echo "openwebui-entrypoint: Local Ollama at $OLLAMA_BASE_URL"
 else
-    export ENABLE_OLLAMA_API="false"
+    # No provider: default the switch OFF, but never override an operator who
+    # pointed OLLAMA_BASE_URL at their own server.
+    export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
 fi
 
 # --- Speech synthesis (TTS) from a provided OpenAI-compatible speech server ---
@@ -84,11 +91,11 @@ fi
 # transcoded correctly too. mp3 is kept as the default because it makes the
 # consumer's ".mp3"-named speech cache coherent and skips that transcode.
 if [ -n "${QWEN3_TTS_HOST:-}" ]; then
-    export AUDIO_TTS_ENGINE="openai"
-    export AUDIO_TTS_OPENAI_API_BASE_URL="$QWEN3_TTS_HOST"
-    export AUDIO_TTS_OPENAI_API_KEY="${QWEN3_TTS_API_KEY:-not-needed}"
-    export AUDIO_TTS_MODEL="${QWEN3_TTS_SERVED_MODEL:-qwen3-tts}"
-    export AUDIO_TTS_VOICE="${QWEN3_TTS_VOICE:-vivian}"
+    export AUDIO_TTS_ENGINE="${AUDIO_TTS_ENGINE:-openai}"
+    export AUDIO_TTS_OPENAI_API_BASE_URL="${AUDIO_TTS_OPENAI_API_BASE_URL:-$QWEN3_TTS_HOST}"
+    export AUDIO_TTS_OPENAI_API_KEY="${AUDIO_TTS_OPENAI_API_KEY:-${QWEN3_TTS_API_KEY:-not-needed}}"
+    export AUDIO_TTS_MODEL="${AUDIO_TTS_MODEL:-${QWEN3_TTS_SERVED_MODEL:-qwen3-tts}}"
+    export AUDIO_TTS_VOICE="${AUDIO_TTS_VOICE:-${QWEN3_TTS_VOICE:-vivian}}"
     if [ -z "${AUDIO_TTS_OPENAI_PARAMS:-}" ]; then
         export AUDIO_TTS_OPENAI_PARAMS='{"response_format":"mp3"}'
     fi
@@ -103,8 +110,8 @@ fi
 # routers/audio/__init__.py:924,942; the names are unchanged in v0.13.4). The server's
 # reply must carry a top-level `text`.
 if [ -n "${WHISPER_BASE_URL:-}" ]; then
-    export AUDIO_STT_ENGINE="openai"
-    export AUDIO_STT_OPENAI_API_BASE_URL="${WHISPER_BASE_URL%/}"   # no trailing slash
+    export AUDIO_STT_ENGINE="${AUDIO_STT_ENGINE:-openai}"
+    export AUDIO_STT_OPENAI_API_BASE_URL="${AUDIO_STT_OPENAI_API_BASE_URL:-${WHISPER_BASE_URL%/}}"   # no trailing slash
 
     # The model name belongs WITH the model: forwarded when the provider supplies one, and
     # left empty otherwise (Open Web UI then sends `model=` and the server answers with the
@@ -149,8 +156,8 @@ if [ -n "${QDRANT_URL:-}" ]; then
         echo "" >&2
         exit 1
     fi
-    export VECTOR_DB="qdrant"
-    export QDRANT_URI="$QDRANT_URL"
+    export VECTOR_DB="${VECTOR_DB:-qdrant}"
+    export QDRANT_URI="${QDRANT_URI:-$QDRANT_URL}"
     echo "openwebui-entrypoint: Qdrant vector store at $QDRANT_URI"
 fi
 
@@ -191,21 +198,29 @@ for srv in servers:
 if tool_connections:
     encoded = json.dumps(tool_connections)
     # Shell-safe: single-quote the JSON
-    print(f"export TOOL_SERVER_CONNECTIONS='{encoded}'")
+    # Derived into a separate variable so the export can default the real one with
+    # shell expansion: the JSON carries quotes, which cannot sit inside a
+    # `${VAR:-…}` written into a double-quoted string.
+    print(f"TOOL_CONNECTIONS_DERIVED='{encoded}'")
+    print('export TOOL_SERVER_CONNECTIONS="${TOOL_SERVER_CONNECTIONS:-$TOOL_CONNECTIONS_DERIVED}"')
     print(f'echo "openwebui-entrypoint: {len(tool_connections)} MCP server(s) configured" >&2')
 
 if jupyter_url:
-    print(f'export CODE_EXECUTION_ENGINE=jupyter')
-    print(f'export CODE_EXECUTION_JUPYTER_URL="{jupyter_url}"')
-    print(f'export CODE_EXECUTION_JUPYTER_AUTH=token')
-    print(f'export CODE_EXECUTION_JUPYTER_TIMEOUT=60')
-    print(f'export CODE_INTERPRETER_ENGINE=jupyter')
-    print(f'export CODE_INTERPRETER_JUPYTER_URL="{jupyter_url}"')
-    print(f'export CODE_INTERPRETER_JUPYTER_AUTH=token')
-    print(f'export CODE_INTERPRETER_JUPYTER_TIMEOUT=60')
+    print('export CODE_EXECUTION_ENGINE="${CODE_EXECUTION_ENGINE:-jupyter}"')
+    print(f'CODE_EXECUTION_JUPYTER_URL_DERIVED="{jupyter_url}"')
+    print('export CODE_EXECUTION_JUPYTER_URL="${CODE_EXECUTION_JUPYTER_URL:-$CODE_EXECUTION_JUPYTER_URL_DERIVED}"')
+    print('export CODE_EXECUTION_JUPYTER_AUTH="${CODE_EXECUTION_JUPYTER_AUTH:-token}"')
+    print('export CODE_EXECUTION_JUPYTER_TIMEOUT="${CODE_EXECUTION_JUPYTER_TIMEOUT:-60}"')
+    print('export CODE_INTERPRETER_ENGINE="${CODE_INTERPRETER_ENGINE:-jupyter}"')
+    print(f'CODE_INTERPRETER_JUPYTER_URL_DERIVED="{jupyter_url}"')
+    print('export CODE_INTERPRETER_JUPYTER_URL="${CODE_INTERPRETER_JUPYTER_URL:-$CODE_INTERPRETER_JUPYTER_URL_DERIVED}"')
+    print('export CODE_INTERPRETER_JUPYTER_AUTH="${CODE_INTERPRETER_JUPYTER_AUTH:-token}"')
+    print('export CODE_INTERPRETER_JUPYTER_TIMEOUT="${CODE_INTERPRETER_JUPYTER_TIMEOUT:-60}"')
     if jupyter_token:
-        print(f'export CODE_EXECUTION_JUPYTER_AUTH_TOKEN="{jupyter_token}"')
-        print(f'export CODE_INTERPRETER_JUPYTER_AUTH_TOKEN="{jupyter_token}"')
+        print(f'CODE_EXECUTION_JUPYTER_AUTH_TOKEN_DERIVED="{jupyter_token}"')
+        print('export CODE_EXECUTION_JUPYTER_AUTH_TOKEN="${CODE_EXECUTION_JUPYTER_AUTH_TOKEN:-$CODE_EXECUTION_JUPYTER_AUTH_TOKEN_DERIVED}"')
+        print(f'CODE_INTERPRETER_JUPYTER_AUTH_TOKEN_DERIVED="{jupyter_token}"')
+        print('export CODE_INTERPRETER_JUPYTER_AUTH_TOKEN="${CODE_INTERPRETER_JUPYTER_AUTH_TOKEN:-$CODE_INTERPRETER_JUPYTER_AUTH_TOKEN_DERIVED}"')
     print(f'echo "openwebui-entrypoint: Jupyter code execution at {jupyter_url}" >&2')
 PYEOF
 )"
