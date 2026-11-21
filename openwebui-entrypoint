@@ -72,9 +72,16 @@ if [ -n "${OLLAMA_HOST:-}" ]; then
     export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-$OLLAMA_HOST}"
     echo "openwebui-entrypoint: Local Ollama at $OLLAMA_BASE_URL"
 else
-    # No provider: default the switch OFF, but never override an operator who
-    # pointed OLLAMA_BASE_URL at their own server.
-    export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
+    # No provider: default the switch OFF — unless the operator pointed OLLAMA_BASE_URL at
+    # their own server, in which case the switch follows THEIR url and defaults ON. Reading
+    # only the switch here would leave their url preserved but ignored, which is the same
+    # silent discard this change exists to remove.
+    if [ -n "${OLLAMA_BASE_URL:-}" ]; then
+        export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-true}"
+        echo "openwebui-entrypoint: Ollama at the operator's OLLAMA_BASE_URL ($OLLAMA_BASE_URL)"
+    else
+        export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
+    fi
 fi
 
 # --- Speech synthesis (TTS) from a provided OpenAI-compatible speech server ---
