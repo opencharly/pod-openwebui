@@ -51,7 +51,7 @@ openwebui:
             - name: IMAGE_GENERATION_ENGINE
               description: "Engine word for image generation (default: comfyui, baked into the image). Pass it explicitly when deploying an image built BEFORE this contract, which carries no default."
             - name: COMFYUI_WORKFLOW_NODES
-              description: "JSON map of the workflow nodes that carry prompt/negative_prompt/width/height/batch size/steps/seed. Optional — leave unset to use Open WebUI's built-in default workflow node ids."
+              description: "JSON array of node-mapping objects ({type,key,node_ids[,value]}) for prompt/width/height/n/seed. negative_prompt and steps are unsafe to map and are inlined in the workflow; no static value nodes (#28). Optional — leave unset to use Open WebUI's built-in default workflow node ids."
             - name: COMFYUI_WORKFLOW
               description: "API-format ComfyUI workflow JSON for image generation. A comfyui deploy can provide it; operator JSON wins over the provider's base64 copy."
             - name: COMFYUI_WORKFLOW_B64
@@ -78,7 +78,7 @@ openwebui:
             - name: IMAGES_EDIT_COMFYUI_WORKFLOW_B64
               description: "Base64 of IMAGES_EDIT_COMFYUI_WORKFLOW, transported by a comfyui deploy; decoded by the entrypoint"
             - name: IMAGES_EDIT_COMFYUI_WORKFLOW_NODES
-              description: "JSON map for the edit workflow; only image and prompt are safe (the edit payload never carries steps, negative_prompt, width or height)"
+              description: "JSON array of node-mapping objects for the edit workflow; only image and prompt (plus optional seed) are safe (the edit payload never carries steps, negative_prompt, width or height)"
             - name: OLLAMA_HOST
               description: "Local Ollama server URL (auto-injected by ollama layer env_provides)"
             - name: OPENAI_API_BASE_URL

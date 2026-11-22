@@ -46,12 +46,12 @@ same name in `env_accept`, so these entries must carry the provider's name verba
 | `COMFYUI_BASE_URL` | ComfyUI server base URL, e.g. `http://charly-comfyui-lab:8188` — see *Image generation and editing* below |
 | `ENABLE_IMAGE_GENERATION` | Turn image generation on (`true`) once `COMFYUI_BASE_URL` and a workflow are present |
 | `COMFYUI_WORKFLOW` / `COMFYUI_WORKFLOW_B64` | API-format generation workflow JSON, or its base64 transport from a comfyui `env_provide`; the entrypoint decodes B64 when the plain value is unset |
-| `COMFYUI_WORKFLOW_NODES` | JSON array of node mappings (prompt/width/height/n/seed); no static `value` nodes (#28) |
+| `COMFYUI_WORKFLOW_NODES` | JSON array of node-mapping objects (prompt/width/height/n/seed; `negative_prompt`/`steps` are unsafe and inlined in the workflow; no static `value` nodes, #28) |
 | `IMAGE_SIZE` / `IMAGE_STEPS` | Default size and steps (upstream names) |
 | `IMAGES_EDIT_COMFYUI_BASE_URL` | ComfyUI URL for editing; defaults to `COMFYUI_BASE_URL` |
 | `ENABLE_IMAGE_EDIT` / `IMAGE_EDIT_ENGINE` | Edit enable and engine; derived when an edit URL + edit workflow resolve |
 | `IMAGES_EDIT_COMFYUI_WORKFLOW` / `IMAGES_EDIT_COMFYUI_WORKFLOW_B64` | API-format edit workflow JSON or its base64 transport |
-| `IMAGES_EDIT_COMFYUI_WORKFLOW_NODES` | Edit node map — map ONLY `image` and `prompt` (plus optional `seed`) |
+| `IMAGES_EDIT_COMFYUI_WORKFLOW_NODES` | JSON array of node-mapping objects — map ONLY `image` and `prompt` (plus optional `seed`) |
 | `IMAGE_EDIT_MODEL` / `IMAGE_EDIT_SIZE` | Optional edit model/size; empty is correct for ComfyUI |
 | `QWEN3_TTS_HOST` / `QWEN3_TTS_SERVED_MODEL` / `QWEN3_TTS_VOICE` | Speech synthesis provider (auto-injected by a qwen3-tts candy `env_provide`) |
 | `WHISPER_BASE_URL` / `WHISPER_MODEL` | Whisper ASR provider (auto-injected by the whisper candy `env_provide`) |
@@ -93,8 +93,8 @@ ComfyUI behind it never advertises a broken feature.
 A comfyui candy `env_provide`s the URLs, `IMAGE_SIZE`/`IMAGE_STEPS`, and the workflow JSON.
 Raw JSON cannot ride `env_provide` (the provider validates Go-template braces), so the provider
 ships `COMFYUI_WORKFLOW_B64` / `IMAGES_EDIT_COMFYUI_WORKFLOW_B64`; the entrypoint base64-decodes
-them into the real variables. An operator's explicit `COMFYUI_WORKFLOW` wins. The node maps
-stay JSON.
+them into the real variables. An operator's explicit `COMFYUI_WORKFLOW` wins. The node
+mappings are JSON arrays of objects.
 
 Edit is narrower than generation: the 0.13.4 edit payload never carries `steps`,
 `negative_prompt`, or guaranteed `width`/`height`, so map ONLY `image` and `prompt` (plus
