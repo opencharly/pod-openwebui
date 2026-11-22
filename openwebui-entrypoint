@@ -168,6 +168,73 @@ if [ -n "${QDRANT_URL:-}" ]; then
     echo "openwebui-entrypoint: Qdrant vector store at $QDRANT_URI"
 fi
 
+# --- Image generation and editing (ComfyUI) ---
+# Upstream 0.13.4 keeps generation and editing in SEPARATE connections: the edit lane
+# has its own enable flag, engine, URL, workflow and node map and never falls back to
+# the generation URL. A ComfyUI provider ships the workflow as base64 because
+# env_provide expands Go templates and rejects raw JSON braces. An operator's explicit
+# workflow always wins. ENABLE_* is derived only when BOTH a URL and a workflow resolve,
+# so a deploy with no ComfyUI behind it never advertises a broken feature.
+decode_workflow_b64() {
+    # $1 = base64 variable name, $2 = destination variable name
+    local b64="${!1:-}"
+    local dest="$2"
+    if [ -n "$b64" ] && [ -z "${!dest:-}" ]; then
+        local value
+        value="$(printf '%s' "$b64" | base64 -d)" || {
+            echo "openwebui-entrypoint: $1 is not valid base64" >&2
+            exit 1
+        }
+        printf -v "$dest" '%s' "$value"
+        export "$dest"
+    fi
+}
+
+derive_image_lane() {
+    # $1 = URL var, $2 = workflow var, $3 = enable var, $4 = engine var
+    local url="${!1:-}" workflow="${!2:-}"
+    if [ -n "$url" ] && [ -n "$workflow" ]; then
+        [ -n "${!3:-}" ] || printf -v "$3" '%s' true
+        [ -n "${!4:-}" ] || printf -v "$4" '%s' comfyui
+        export "$3" "$4"
+    fi
+}
+
+decode_workflow_b64 COMFYUI_WORKFLOW_B64 COMFYUI_WORKFLOW
+decode_workflow_b64 IMAGES_EDIT_COMFYUI_WORKFLOW_B64 IMAGES_EDIT_COMFYUI_WORKFLOW
+
+# The edit lane does not inherit the generation URL upstream; default it here.
+if [ -z "${IMAGES_EDIT_COMFYUI_BASE_URL:-}" ] && [ -n "${COMFYUI_BASE_URL:-}" ]; then
+    export IMAGES_EDIT_COMFYUI_BASE_URL="$COMFYUI_BASE_URL"
+fi
+
+derive_image_lane COMFYUI_BASE_URL COMFYUI_WORKFLOW ENABLE_IMAGE_GENERATION IMAGE_GENERATION_ENGINE
+derive_image_lane IMAGES_EDIT_COMFYUI_BASE_URL IMAGES_EDIT_COMFYUI_WORKFLOW ENABLE_IMAGE_EDIT IMAGE_EDIT_ENGINE
+
+# Suppress the OpenAI edit connection. Upstream defaults
+# IMAGES_EDIT_OPENAI_API_KEY/BASE_URL to the CHAT provider; with
+# IMAGE_EDIT_ENGINE=comfyui those defaults would still synthesize a bogus edit
+# backend pointing at the chat server. Empty values make the connection unconfigured.
+if [ "${IMAGE_EDIT_ENGINE:-}" = "comfyui" ]; then
+    export IMAGES_EDIT_OPENAI_API_BASE_URL="${IMAGES_EDIT_OPENAI_API_BASE_URL:-}"
+    export IMAGES_EDIT_OPENAI_API_KEY="${IMAGES_EDIT_OPENAI_API_KEY:-}"
+fi
+
+# Parse every shipped workflow/node map NOW: a malformed value would otherwise surface
+# as a runtime failure whose ComfyUI error body Open WebUI discards.
+for name in COMFYUI_WORKFLOW COMFYUI_WORKFLOW_NODES IMAGES_EDIT_COMFYUI_WORKFLOW IMAGES_EDIT_COMFYUI_WORKFLOW_NODES; do
+    value="${!name:-}"
+    if [ -n "$value" ]; then
+        python3 -c 'import json,sys; json.loads(sys.argv[1])' "$value" || {
+            echo "openwebui-entrypoint: $name is not valid JSON" >&2
+            exit 1
+        }
+    fi
+done
+
+echo "openwebui-entrypoint: image generation engine=${IMAGE_GENERATION_ENGINE:-unset} enabled=${ENABLE_IMAGE_GENERATION:-false} url=${COMFYUI_BASE_URL:-unset}"
+echo "openwebui-entrypoint: image edit engine=${IMAGE_EDIT_ENGINE:-unset} enabled=${ENABLE_IMAGE_EDIT:-false} url=${IMAGES_EDIT_COMFYUI_BASE_URL:-unset}"
+
 # --- MCP Servers + Jupyter from CHARLY_MCP_SERVERS ---
 if [ -n "${CHARLY_MCP_SERVERS:-}" ]; then
     eval "$(python3 - "$CHARLY_MCP_SERVERS" "${CODE_EXECUTION_JUPYTER_AUTH_TOKEN:-}" <<'PYEOF'
