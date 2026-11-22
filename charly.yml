@@ -229,6 +229,28 @@ openwebui:
               service:
                 service: openwebui
                 running: true
+            - check: the entrypoint derives the image-generation lane and decodes its workflow
+              id: entrypoint-image-generation-derives
+              exit_status: 0
+              stdout:
+                - contains: 'GEN=true|comfyui|{"1":{'
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "GEN=$ENABLE_IMAGE_GENERATION|$IMAGE_GENERATION_ENGINE|$(printenv COMFYUI_WORKFLOW | head -c 6)"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                wf=$(printf '%s' '{"1":{"class_type":"X","inputs":{}}}' | base64 -w0)
+                env -u COMFYUI_WORKFLOW -u COMFYUI_WORKFLOW_B64 -u ENABLE_IMAGE_GENERATION -u IMAGE_GENERATION_ENGINE -u IMAGES_EDIT_COMFYUI_BASE_URL -u IMAGES_EDIT_COMFYUI_WORKFLOW -u IMAGES_EDIT_COMFYUI_WORKFLOW_B64 -u ENABLE_IMAGE_EDIT -u IMAGE_EDIT_ENGINE PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe COMFYUI_BASE_URL=http://comfy:8188 COMFYUI_WORKFLOW_B64="$wf" ~/.local/bin/openwebui-entrypoint
+            - check: the entrypoint derives the edit lane, defaults its URL, decodes the workflow and suppresses the OpenAI edit connection
+              id: entrypoint-image-edit-derives
+              exit_status: 0
+              stdout:
+                - contains: 'EDIT=true|comfyui|http://comfy:8188||{"161":{'
+              command: |
+                mkdir -p /tmp/ep-stub
+                printf '#!/bin/sh\necho "EDIT=$ENABLE_IMAGE_EDIT|$IMAGE_EDIT_ENGINE|$IMAGES_EDIT_COMFYUI_BASE_URL|$IMAGES_EDIT_OPENAI_API_BASE_URL|$(printenv IMAGES_EDIT_COMFYUI_WORKFLOW | head -c 8)"\n' > /tmp/ep-stub/open-webui
+                chmod 0755 /tmp/ep-stub/open-webui
+                wf=$(printf '%s' '{"161":{"class_type":"Y","inputs":{}}}' | base64 -w0)
+                env -u ENABLE_IMAGE_EDIT -u IMAGE_EDIT_ENGINE -u IMAGES_EDIT_COMFYUI_BASE_URL -u IMAGES_EDIT_COMFYUI_WORKFLOW -u IMAGES_EDIT_COMFYUI_WORKFLOW_B64 -u IMAGES_EDIT_OPENAI_API_BASE_URL -u IMAGES_EDIT_OPENAI_API_KEY -u ENABLE_IMAGE_GENERATION -u IMAGE_GENERATION_ENGINE -u COMFYUI_WORKFLOW -u COMFYUI_WORKFLOW_B64 PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe OPENAI_API_KEY=chat-key OPENAI_API_BASE_URL=https://chat.example/v1 COMFYUI_BASE_URL=http://comfy:8188 IMAGES_EDIT_COMFYUI_WORKFLOW_B64="$wf" ~/.local/bin/openwebui-entrypoint
             - check: the Open WebUI web interface answers HTTP 200 on the published port
               timeout: 30s
               # First start is not quick: Open WebUI runs its Alembic migrations and
