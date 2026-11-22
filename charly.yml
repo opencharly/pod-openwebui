@@ -33,6 +33,10 @@ openwebui:
             # and generation stays off until an operator turns it on with
             # ENABLE_IMAGE_GENERATION=true — see the two accepts below.
             IMAGE_GENERATION_ENGINE: comfyui
+            # The EDIT lane has its own engine variable upstream (default: openai). Pin the
+            # engine here so a resolved edit URL can never be routed at the chat provider;
+            # ENABLE_IMAGE_EDIT stays off until the entrypoint sees an edit workflow.
+            IMAGE_EDIT_ENGINE: comfyui
         env_require:
             - name: WEBUI_ADMIN_EMAIL
               description: "Admin account email (identifier, not a credential) — pass via: charly config openwebui -e WEBUI_ADMIN_EMAIL=you@example.com"
@@ -48,6 +52,33 @@ openwebui:
               description: "Engine word for image generation (default: comfyui, baked into the image). Pass it explicitly when deploying an image built BEFORE this contract, which carries no default."
             - name: COMFYUI_WORKFLOW_NODES
               description: "JSON map of the workflow nodes that carry prompt/negative_prompt/width/height/batch size/steps/seed. Optional — leave unset to use Open WebUI's built-in default workflow node ids."
+            - name: COMFYUI_WORKFLOW
+              description: "API-format ComfyUI workflow JSON for image generation. A comfyui deploy can provide it; operator JSON wins over the provider's base64 copy."
+            - name: COMFYUI_WORKFLOW_B64
+              description: "Base64 of COMFYUI_WORKFLOW, transported by a comfyui deploy (env_provide cannot carry raw JSON braces); the entrypoint decodes it into COMFYUI_WORKFLOW."
+            - name: IMAGE_SIZE
+              description: "Default image size (upstream IMAGE_SIZE, e.g. 1024x1024)"
+            - name: IMAGE_STEPS
+              description: "Default sampling steps (upstream IMAGE_STEPS; the Qwen Turbo graph uses a fixed 8-step sigma schedule instead)"
+            # --- Image editing (ComfyUI) ----------------------------------------------------
+            # Upstream 0.13.4 keeps EDIT entirely separate: its own enable flag, engine,
+            # URL, workflow and node map. It does NOT fall back to the generation URL.
+            - name: IMAGES_EDIT_COMFYUI_BASE_URL
+              description: "ComfyUI server base URL for image editing (a comfyui deploy provides it); defaults to COMFYUI_BASE_URL when unset"
+            - name: ENABLE_IMAGE_EDIT
+              description: "Turn on image editing (derived true by the entrypoint when an edit URL and an edit workflow both resolve)"
+            - name: IMAGE_EDIT_ENGINE
+              description: "Engine word for image editing (default: comfyui, baked into the image)"
+            - name: IMAGE_EDIT_MODEL
+              description: "Optional edit model id; empty is correct for ComfyUI because the model is inlined in the workflow"
+            - name: IMAGE_EDIT_SIZE
+              description: "Optional edit output size; empty lets FluxKontextImageScale preserve the source aspect"
+            - name: IMAGES_EDIT_COMFYUI_WORKFLOW
+              description: "API-format ComfyUI workflow JSON for image editing"
+            - name: IMAGES_EDIT_COMFYUI_WORKFLOW_B64
+              description: "Base64 of IMAGES_EDIT_COMFYUI_WORKFLOW, transported by a comfyui deploy; decoded by the entrypoint"
+            - name: IMAGES_EDIT_COMFYUI_WORKFLOW_NODES
+              description: "JSON map for the edit workflow; only image and prompt are safe (the edit payload never carries steps, negative_prompt, width or height)"
             - name: OLLAMA_HOST
               description: "Local Ollama server URL (auto-injected by ollama layer env_provides)"
             - name: OPENAI_API_BASE_URL
@@ -148,6 +179,12 @@ openwebui:
             - name: QDRANT_API_KEY
               description: "Qdrant admin API key (the key the qdrant layer generates and stores at charly/api-key/qdrant); required whenever QDRANT_URL is present"
               key: charly/api-key/qdrant
+            - name: COMFYUI_API_KEY
+              description: "Optional bearer key for a keyed ComfyUI server"
+              key: charly/api-key/comfyui
+            - name: IMAGES_EDIT_COMFYUI_API_KEY
+              description: "Optional bearer key for the keyed ComfyUI edit server"
+              key: charly/api-key/comfyui
 
         mcp_accept:
             - name: jupyter

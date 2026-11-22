@@ -355,3 +355,12 @@ framework; record the run's pass/fail counts on the PR that lands a change here.
 
 - `/charly-image:image` — image family umbrella (`candy:` image entries — those carrying `base:`/`from:` — in `charly.yml`, build/validate/inspect/list)
 - `/charly-build:build` — the embedded build vocabulary (distros, builders, init-systems)
+
+## Image lane (0.13.4)
+
+Generation and editing are SEPARATE connections. The candy ships `IMAGE_EDIT_ENGINE=comfyui`,
+accepts the full generation/edit env families, and its entrypoint derives the enable flags from
+resolved ComfyUI URLs, decodes base64 workflow provides, and suppresses the OpenAI edit
+connection inherited from `OPENAI_API_KEY`. Constants live in the workflow JSON (#28); edit node
+maps carry only `image`/`prompt`. See `/charly-openwebui:openwebui-layer` "Image generation and
+editing (ComfyUI)".
