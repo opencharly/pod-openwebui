@@ -14,13 +14,13 @@ openwebui:
             entrypoint, the running service, the admin email injected into its
             environment, and the HTTP 200 the web UI returns on its published port.
         require:
-            - '@github.com/opencharly/layer-python:v2026.293.1922'
-            - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
+            - '@github.com/opencharly/layer-python:v2026.314.0709'
+            - '@github.com/opencharly/layer-supervisord:v2026.314.0710'
             # pydub is a hard dependency of open-webui and needs the ffmpeg BINARY:
             # Open Web UI transcodes any non-MP3 speech response through it, and an
             # absent binary turns a WAV reply into a 500. Measured on the deployed
             # pod: pydub present, ffmpeg missing.
-            - '@github.com/opencharly/layer-ffmpeg:v2026.272.0056'
+            - '@github.com/opencharly/layer-ffmpeg:v2026.314.0706'
         env:
             DATA_DIR: "/opt/data"
             PORT: "8080"
