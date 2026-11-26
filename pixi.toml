@@ -3,12 +3,6 @@ name = "openwebui"
 channels = ["conda-forge"]
 platforms = ["linux-64"]
 
-# The glibc platform the builder resolves (it appends this section when absent).
-# Declaring it here makes the builder's append a no-op and keys pixi.lock to
-# `linux-64-glibc-2-39`, so `pixi install --frozen` matches on pixi 0.84.2.
-[system-requirements]
-libc = { family = "glibc", version = "2.39" }
-
 [dependencies]
 python = ">=3.11,<3.13"
 
