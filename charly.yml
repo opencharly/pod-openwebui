@@ -196,6 +196,16 @@ openwebui:
         volume:
             - name: data
               path: "/opt/data"
+            # The XDG cache home. huggingface_hub resolves HF_HOME as
+            # $XDG_CACHE_HOME/huggingface (XDG_CACHE_HOME defaults to ~/.cache), and the
+            # sentence-transformers embedding model lands there. With only `data`
+            # persisted that cache lived in the container's writable layer, so every
+            # re-created container re-fetched the model: measured 889 MB and 254 s to
+            # the first HTTP 200 (opencharly/pod-openwebui#36). Mounting the whole
+            # cache home keeps HuggingFace — and anything else that follows XDG — warm
+            # across a re-create, without pinning XDG_* in a deploy.
+            - name: cache
+              path: "${HOME}/.cache"
         alias:
             - name: open-webui
               command: open-webui
@@ -280,6 +290,32 @@ openwebui:
               http:
                 http: http://127.0.0.1:${HOST_PORT:8080}/
                 status: 200
+            # The cache-persistence witness. A check that only asserts the app answers
+            # cannot detect a cache that is re-fetched on every re-create, so this one
+            # asserts the STRUCTURE: the XDG cache home the app writes is a mount point
+            # (the candy's `cache` volume), and the app's own resolver names a path under
+            # it. Without the volume the cache is in the container layer and this fails.
+            - check: the HuggingFace model cache sits on the persisted XDG cache volume, so a re-created container starts warm
+              id: hf-cache-on-the-volume
+              context:
+                - runtime
+              exit_status: 0
+              command: |
+                cache="$HOME/.cache"
+                if ! grep -q " ${cache} " /proc/self/mountinfo; then
+                  echo "$cache is not a mount: the model cache is in the container layer and will be re-fetched"
+                  exit 1
+                fi
+                # The app's own resolver must name a path under that mount. A cold run
+                # may not have populated it yet, so existence is reported, not required;
+                # the MOUNT is what makes every re-create warm.
+                hf=$(python3 -c 'import huggingface_hub.constants as c; print(c.HF_HOME)')
+                echo "HF_HOME=$hf"
+                case "$hf" in
+                  "$cache"/*) echo "the model cache resolves under the persisted cache volume" ;;
+                  *) echo "$hf is outside $cache"; exit 1 ;;
+                esac
+                du -sh "$hf" 2>/dev/null || echo "not populated yet (first start)"
             # The entrypoint's provider projection has no other committed witness, so it is
             # asserted HERE as a BUILD-scope check: the stub `open-webui` below stands in for
             # the real service and captures what the entrypoint WOULD exec, which is the
