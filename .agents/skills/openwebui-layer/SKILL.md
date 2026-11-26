@@ -253,7 +253,6 @@ openwebui:
 ## Related Boxes
 
 - `/charly-openwebui:openwebui` -- the deployed box
-- `/charly-jupyter:jupyter` -- deploy alongside for MCP notebook access and code execution
 - `/charly-ollama:ollama` -- deploy alongside for local LLM inference
 - `/charly-hermes:hermes` -- alternative AI frontend (CLI-based agent vs web UI)
 
