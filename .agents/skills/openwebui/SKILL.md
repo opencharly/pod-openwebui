@@ -258,10 +258,8 @@ Rules that are load-bearing:
 
 ## Related Boxes
 
-- `/charly-jupyter:jupyter` — deploy alongside for MCP notebooks and code execution
 - `/charly-ollama:ollama` — deploy alongside for local LLM inference
 - `/charly-hermes:hermes` — alternative AI frontend (CLI agent vs web UI)
-- `/charly-selkies:selkies-labwc` — deploy alongside for shared Chrome browser
 
 ## Verification
 
