@@ -196,6 +196,23 @@ openwebui:
         volume:
             - name: data
               path: "/opt/data"
+            # The XDG cache home. huggingface_hub resolves HF_HOME as
+            # $XDG_CACHE_HOME/huggingface (XDG_CACHE_HOME defaults to ~/.cache), and the
+            # sentence-transformers embedding model lands there. With only `data`
+            # persisted that cache lived in the container's writable layer, so every
+            # re-created container re-fetched the model: measured 889 MB and 254 s to
+            # the first HTTP 200 (opencharly/pod-openwebui#36). Mounting the whole
+            # cache home keeps HuggingFace — and anything else that follows XDG — warm
+            # across a re-create, without pinning XDG_* in a deploy.
+            #
+            # `~`, NOT `${HOME}`: a candy volume path is expanded by
+            # sdk/deploykit.expandVolumeHome, which resolves `~/`/`~`/`$HOME` but NOT the
+            # braced `${HOME}` form — a `${HOME}` path reaches podman literally and podman
+            # rejects it ("must be an absolute path"); quadlet's own `${HOME}` expansion is
+            # the HOST home, so the mount lands outside the container's home either way
+            # (measured in the 2026.330.1447 bed run: `hf-cache-on-the-volume` FAILED).
+            - name: cache
+              path: "~/.cache"
         alias:
             - name: open-webui
               command: open-webui
@@ -253,21 +270,59 @@ openwebui:
                 env -u ENABLE_IMAGE_EDIT -u IMAGE_EDIT_ENGINE -u IMAGES_EDIT_COMFYUI_BASE_URL -u IMAGES_EDIT_COMFYUI_WORKFLOW -u IMAGES_EDIT_COMFYUI_WORKFLOW_B64 -u IMAGES_EDIT_OPENAI_API_BASE_URL -u IMAGES_EDIT_OPENAI_API_KEY -u ENABLE_IMAGE_GENERATION -u IMAGE_GENERATION_ENGINE -u COMFYUI_WORKFLOW -u COMFYUI_WORKFLOW_B64 PATH=/tmp/ep-stub:/usr/local/bin:/usr/bin:/bin DATA_DIR=/tmp/ep-data WEBUI_ADMIN_EMAIL=probe@example.com WEBUI_ADMIN_PASSWORD=probe OPENAI_API_KEY=chat-key OPENAI_API_BASE_URL=https://chat.example/v1 COMFYUI_BASE_URL=http://comfy:8188 IMAGES_EDIT_COMFYUI_WORKFLOW_B64="$wf" ~/.local/bin/openwebui-entrypoint
             - check: the Open WebUI web interface answers HTTP 200 on the published port
               timeout: 30s
-              # First start is not quick: Open WebUI runs its Alembic migrations and
-              # builds the model cache before uvicorn binds, so a single unconditional
-              # GET on a fresh deployment hits the port forwarder with nothing behind it
-              # and gets a connection reset (measured: the whole live phase failed on
-              # this step at ~8s into a cold bed). `eventually` probes readiness in the
-              # engine — a bounded retry, never a fixed sleep — for the app's real
-              # cold-start budget; steady state is still asserted by the same single
-              # request once it is up.
-              eventually: 3m
-              retry_interval: 2s
+              # First start is not quick: Open WebUI runs its Alembic migrations, loads
+              # the sentence-transformers embedding model and builds the model cache
+              # before uvicorn binds, so a single unconditional GET on a fresh
+              # deployment hits the port forwarder with nothing behind it and gets a
+              # connection reset (measured: the whole live phase failed on this step at
+              # ~8s into a cold bed). `eventually` probes readiness in the engine — a
+              # bounded retry, never a fixed sleep — for the app's real cold-start
+              # budget; steady state is still asserted by the same single request once
+              # it is up.
+              #
+              # 3m was still short: on a re-created deployment the probe expired at
+              # attempts=81, elapsed=2m59.61s while the server was healthy moments later
+              # (opencharly/pod-openwebui#34). Worse, a cold container RE-FETCHES the
+              # sentence-transformers model from HuggingFace (the HF cache lives in the
+              # container, not on a volume), so the start is network-bound: measured on a
+              # torn-down-and-re-created container, the first 200 arrived at 254s, with
+              # "Fetching 30 files" still in the log past two minutes.
+              # 10m is the window that covers a slow fetch with real margin, still bounded
+              # and still a poll (never a sleep). The tree's precedents run to 15m for
+              # exactly this class of cold start.
+              eventually: 10m
+              retry_interval: 5s
               context:
                 - runtime
               http:
                 http: http://127.0.0.1:${HOST_PORT:8080}/
                 status: 200
+            # The cache-persistence witness. A check that only asserts the app answers
+            # cannot detect a cache that is re-fetched on every re-create, so this one
+            # asserts the STRUCTURE: the XDG cache home the app writes is a mount point
+            # (the candy's `cache` volume), and the app's own resolver names a path under
+            # it. Without the volume the cache is in the container layer and this fails.
+            - check: the HuggingFace model cache sits on the persisted XDG cache volume, so a re-created container starts warm
+              id: hf-cache-on-the-volume
+              context:
+                - runtime
+              exit_status: 0
+              command: |
+                cache="$HOME/.cache"
+                if ! grep -q " ${cache} " /proc/self/mountinfo; then
+                  echo "$cache is not a mount: the model cache is in the container layer and will be re-fetched"
+                  exit 1
+                fi
+                # The app's own resolver must name a path under that mount. A cold run
+                # may not have populated it yet, so existence is reported, not required;
+                # the MOUNT is what makes every re-create warm.
+                hf=$(python3 -c 'import huggingface_hub.constants as c; print(c.HF_HOME)')
+                echo "HF_HOME=$hf"
+                case "$hf" in
+                  "$cache"/*) echo "the model cache resolves under the persisted cache volume" ;;
+                  *) echo "$hf is outside $cache"; exit 1 ;;
+                esac
+                du -sh "$hf" 2>/dev/null || echo "not populated yet (first start)"
             # The entrypoint's provider projection has no other committed witness, so it is
             # asserted HERE as a BUILD-scope check: the stub `open-webui` below stands in for
             # the real service and captures what the entrypoint WOULD exec, which is the
