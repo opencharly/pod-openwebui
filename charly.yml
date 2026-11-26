@@ -263,12 +263,17 @@ openwebui:
               # budget; steady state is still asserted by the same single request once
               # it is up.
               #
-              # 3m was still short: on a re-created deployment the app needed ~5 min
-              # (weights + config migrations visible in its log) and the probe expired
-              # at attempts=81, elapsed=2m59.61s while the server was healthy moments
-              # later (opencharly/pod-openwebui#34). 5m/5s matches the tree's own
-              # cold-start precedents (comfyui-api 300s/10s, qwen3-tts-health 5m/5s).
-              eventually: 5m
+              # 3m was still short: on a re-created deployment the probe expired at
+              # attempts=81, elapsed=2m59.61s while the server was healthy moments later
+              # (opencharly/pod-openwebui#34). Worse, a cold container RE-FETCHES the
+              # sentence-transformers model from HuggingFace (the HF cache lives in the
+              # container, not on a volume), so the start is network-bound: measured on a
+              # torn-down-and-re-created container, the first 200 arrived at 254s, with
+              # "Fetching 30 files" still in the log past two minutes.
+              # 10m is the window that covers a slow fetch with real margin, still bounded
+              # and still a poll (never a sleep). The tree's precedents run to 15m for
+              # exactly this class of cold start.
+              eventually: 10m
               retry_interval: 5s
               context:
                 - runtime
