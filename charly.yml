@@ -204,8 +204,15 @@ openwebui:
             # the first HTTP 200 (opencharly/pod-openwebui#36). Mounting the whole
             # cache home keeps HuggingFace — and anything else that follows XDG — warm
             # across a re-create, without pinning XDG_* in a deploy.
+            #
+            # `~`, NOT `${HOME}`: a candy volume path is expanded by
+            # sdk/deploykit.expandVolumeHome, which resolves `~/`/`~`/`$HOME` but NOT the
+            # braced `${HOME}` form — a `${HOME}` path reaches podman literally and podman
+            # rejects it ("must be an absolute path"); quadlet's own `${HOME}` expansion is
+            # the HOST home, so the mount lands outside the container's home either way
+            # (measured in the 2026.330.1447 bed run: `hf-cache-on-the-volume` FAILED).
             - name: cache
-              path: "${HOME}/.cache"
+              path: "~/.cache"
         alias:
             - name: open-webui
               command: open-webui
