@@ -1,0 +1,31 @@
+openwebui:
+    candy:
+        # Open Web UI on the CachyOS base — the same candy composition as the Fedora
+        # box (distro-fedora/box/openwebui), on the x86_64_v3-optimized base instead.
+        # The candy set is identical so the two boxes stay comparable: the only
+        # difference is the base distro and therefore the package names the candies'
+        # per-distro maps resolve (pac on here, rpm there).
+        #
+        # The box composes the LOCAL `openwebui` candy, not a pinned copy of it: a box in
+        # this repo proves this tree. The candy's own `require:` brings layer-python,
+        # layer-supervisord and layer-ffmpeg at ITS tags.
+        base: cachyos.cachyos
+        platform:
+            - linux/amd64
+        description: |
+            Open Web UI — the LLM chat front-end — on the CachyOS (x86_64_v3) base,
+            with its auto-configuring entrypoint and the open-webui 0.13.4 release
+            from PyPI through pixi. Composes agent-forwarding (GPG/SSH/direnv for the
+            forwarded-agent workflow) and pod-dbus, the same three candies the Fedora
+            box uses, so the two images differ only by base distro. The service is
+            supervisord-managed on port 8080 and reaches LLM providers through the
+            entrypoint's env/secrets projection.
+        candy:
+            - '@github.com/opencharly/layer-agent-forwarding:v2026.274.0608'
+            - openwebui
+            - '@github.com/opencharly/pod-dbus:v2026.274.0648'
+        # No box-level check PLAN: the entrypoint + WEBUI_ADMIN_EMAIL probes live on the
+        # openwebui candy, and the pixi python is proven by its supervised service — one
+        # candy check covers every box composing it. The composed IMAGE is proven by the
+        # disposable bed `check-openwebui-pod` in this repo's charly.yml (the ComfyUI pair
+        # bed returns with opencharly/charly#1294).

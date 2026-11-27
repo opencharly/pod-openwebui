@@ -1,3 +1,42 @@
+#  opencharly/pod-openwebui — the Open Web UI service: the `openwebui` candy, its
+#  auto-config entrypoint and pixi environment at the repo root, and now the
+#  `openwebui` image box with its disposable R10 bed, which lives HERE with the
+#  service it tests (AGENTS.md "Repo classes and naming": a bed lives with the thing
+#  it tests). The PAIR bed (ComfyUI <-> Open Web UI) is not here yet: building a box
+#  from a namespace import is broken (opencharly/charly#1294), so the bed that needs
+#  `comfypod.comfyui-cdi` returns when that lands.
+#
+#  A standalone consumer declares what a copy inside a distro inherited: the base
+#  as a NAMESPACED import at the project root (a namespace mounted by a discovered
+#  document does not resolve a box's own `base:`), and the pixi/npm builder
+#  vocabulary (a builder map does not cross a namespace boundary).
+defaults:
+    platform:
+        - linux/amd64
+    tag: auto
+    registry: ghcr.io/opencharly
+    build:
+        - pac
+    builder:
+        aur: arch.arch-builder
+        cargo: arch.arch-builder
+        npm: arch.arch-builder
+        pixi: arch.arch-builder
+    merge:
+        auto: false
+        max_mb: 128
+import:
+    - cachyos: '@github.com/opencharly/distro-cachyos:v2026.331.0132'
+    - arch: '@github.com/opencharly/distro-arch:v2026.330.1808'
+    # The `charly openwebui` command, imported so the R10 bed can drive the plugin against
+    # the server it just started (the bed's absent -> change -> present round-trip). An
+    # IMPORT, not a composition: the word registers from the imported repo's own discover
+    # tree (charly#1136), and no image gains the binary.
+    - owuicli: '@github.com/opencharly/plugin-openwebui:v2026.324.1215'
+discover:
+    - path: box
+      recursive: true
+
 openwebui:
     candy:
         description: |
@@ -585,3 +624,146 @@ openwebui-layer-skill:
         name: openwebui-layer
         family: openwebui
         owner: openwebui
+
+# Disposable R10 pod bed for the openwebui image.
+check-openwebui-pod:
+    pod:
+        image: openwebui
+        disposable: true
+        lifecycle: dev
+        description: Sole proof of the openwebui image on the CachyOS base — the Open Web UI chat front-end with its auto-config entrypoint, composed with agent-forwarding (GPG/SSH/direnv) and pod-dbus, mirroring the Fedora box candy-for-candy so the two are comparable. Builds the pod on cachyos (open-webui 0.13.4 from PyPI through pixi, on the 3.12 interpreter upstream requires), deploys it, and runs the candy baked checks — entrypoint present and executable, supervisord service running, HTTP 200 on the auto-allocated port, injected WEBUI_ADMIN_EMAIL, published port reachable — plus the python layer floor assertion and the served open-webui version read from /api/config. The HTTP probes are readiness-bounded (eventually 10m, the candy's own cold-start budget) because Open Web UI migrates its database and loads its embedding model before uvicorn binds.
+        env:
+            OPENAI_API_BASE_URL: https://api.openai.com/v1
+            OPENAI_API_KEY: not-a-real-key
+            WEBUI_ADMIN_EMAIL: admin@openwebui.example
+        plan:
+            # The box OWNS the pod-openwebui pin, so it owns the expectation: when the pin
+            # advances, this line advances with it in the same change.
+            - check: the running service serves the open-webui version this box pins (0.13.4), read from its own /api/config
+              id: openwebui-served-version
+              context:
+                - runtime
+              timeout: 30s
+              # 10m, the SAME budget the candy's own web-interface probe carries: this check
+              # measures the same cold-start boundary, and 3m was measured insufficient — the
+              # live phase of the run that proved this PR took 2m50s, inside 10s of the old
+              # expiry, so a slower cold start would fail HERE while the candy's probe passed.
+              eventually: 10m
+              retry_interval: 5s
+              http:
+                http: http://127.0.0.1:${HOST_PORT:8080}/api/config
+                status: 200
+                body:
+                  - contains: '"version":"0.13.4"'
+            # A base DIGEST cannot be observed from the manifest at runtime — the only witness
+            # that the image really came from the pinned base is the base's own /etc/os-release.
+            # So it is asserted here, and VERSION_ID is the digest's fingerprint (the digest
+            # itself never reaches the guest). When the base digest is refreshed, this line
+            # advances with it in the SAME change: the box owns the pin, so the box owns the
+            # expectation — the same coupling the served-version check above uses, and the one
+            # whose absence let the Fedora box ship a three-release-old candy.
+            - check: the composed image runs from the CachyOS base this box pins (ID=cachyos, VERSION_ID=20261018.0.612668), so a stale base digest cannot pass this bed
+              id: cachyos-base-identity
+              context:
+                - runtime
+              exit_status: 0
+              stdout:
+                - contains: ID=cachyos
+                - contains: VERSION_ID=20261018.0.612668
+              command: |
+                grep -E '^(ID|VERSION_ID)=' /etc/os-release
+            # ===== the plugin round-trip: absence -> change -> presence =====
+            # The command word is IMPORTED at project level (`import: owuicli:`), so
+            # `charly openwebui` resolves on the host without composing the binary into any
+            # image. The entity these steps drive is a scratch file under /tmp, and the admin
+            # credential is the deployment's OWN generated secret, read into a shell variable
+            # and never echoed nor written into the entity (the node carries `auth.email` and
+            # no password at all).
+            #
+            # WHY EACH STEP CAN FAIL: step 1 fails if the server already holds the value (then
+            # the round-trip would prove nothing) or if `diff` reports drift without naming the
+            # surface; step 2 fails if `apply` errors or if the very next `diff` still sees
+            # drift; step 3 fails if a READ-BACK from the server does not carry the value, which
+            # is what separates "we posted it" from "the server has it".
+            - check: the entity declares a value the server does NOT have, so diff exits non-zero and names the models surface (the absence control the next two steps need)
+              id: openwebui-plugin-absent
+              context: [runtime]
+              timeout: 240s
+              exit_status: 0
+              command:
+                in_container: false
+                command: |
+                  set -eu
+                  dir=/tmp/owui-roundtrip
+                  rm -rf "$dir"; mkdir -p "$dir"
+                  {
+                    echo 'repo: example.com/owui-roundtrip'
+                    echo 'openwebui-config:'
+                    echo '    openwebui:'
+                    echo '        auth: {email: admin@openwebui.example}'
+                    echo '        config:'
+                    echo '            models:'
+                    echo '                DEFAULT_MODELS: bed-drift-proof'
+                    echo '                DEFAULT_PINNED_MODELS: null'
+                    echo '                MODEL_ORDER_LIST: []'
+                  } > "$dir/desired.yml"
+                  # Stream-clean read (stdout is the value alone; progress goes to stderr).
+                  pw=$(${CHARLY_BIN} secrets get charly/secret WEBUI_ADMIN_PASSWORD 2>/dev/null)
+                  if OPENWEBUI_PASSWORD="$pw" ${CHARLY_BIN} openwebui diff \
+                       --file "$dir/desired.yml" --server "http://127.0.0.1:${HOST_PORT:8080}" \
+                       > "$dir/absent.log" 2>&1; then
+                    echo "diff reported NO drift against a value the server cannot have yet" >&2
+                    cat "$dir/absent.log" >&2
+                    exit 1
+                  fi
+                  grep -q models "$dir/absent.log" || {
+                    echo "diff exited non-zero but did not name the models surface:" >&2
+                    cat "$dir/absent.log" >&2
+                    exit 1
+                  }
+                  echo "absent: diff exited non-zero and named the models surface"
+            - check: apply posts the surface in one call, and the diff that follows is CLEAN (the change, checked by the tool that would report drift)
+              id: openwebui-plugin-change
+              context: [runtime]
+              timeout: 240s
+              exit_status: 0
+              command:
+                in_container: false
+                command: |
+                  set -eu
+                  dir=/tmp/owui-roundtrip
+                  pw=$(${CHARLY_BIN} secrets get charly/secret WEBUI_ADMIN_PASSWORD 2>/dev/null)
+                  OPENWEBUI_PASSWORD="$pw" ${CHARLY_BIN} openwebui apply \
+                    --file "$dir/desired.yml" --server "http://127.0.0.1:${HOST_PORT:8080}" \
+                    > "$dir/apply.log" 2>&1
+                  cat "$dir/apply.log"
+                  if ! OPENWEBUI_PASSWORD="$pw" ${CHARLY_BIN} openwebui diff \
+                       --file "$dir/desired.yml" --server "http://127.0.0.1:${HOST_PORT:8080}" \
+                       > "$dir/present.log" 2>&1; then
+                    echo "diff still reports drift after apply:" >&2
+                    cat "$dir/present.log" >&2
+                    exit 1
+                  fi
+                  echo "change: apply posted the surface and the following diff is clean"
+            - check: a READ-BACK from the server carries the applied value, so presence is proven from the server and not from the file that asked for it
+              id: openwebui-plugin-present
+              context: [runtime]
+              timeout: 240s
+              exit_status: 0
+              stdout:
+                - contains: 'DEFAULT_MODELS: bed-drift-proof'
+              command:
+                in_container: false
+                command: |
+                  set -eu
+                  dir=/tmp/owui-roundtrip
+                  pw=$(${CHARLY_BIN} secrets get charly/secret WEBUI_ADMIN_PASSWORD 2>/dev/null)
+                  echo 'repo: example.com/owui-roundtrip' > "$dir/readback.yml"
+                  # The read-back entity is a bare file, so the EMAIL comes from the flag here
+                  # (the other two steps read it from the entity's `auth.email`); the password
+                  # is the same deployment secret, never written to disk.
+                  OPENWEBUI_PASSWORD="$pw" ${CHARLY_BIN} openwebui save \
+                    --file "$dir/readback.yml" --server "http://127.0.0.1:${HOST_PORT:8080}" \
+                    --email admin@openwebui.example \
+                    > "$dir/save.log" 2>&1
+                  sed -n '/DEFAULT_MODELS/p' "$dir/readback.yml"
