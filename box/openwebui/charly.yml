@@ -27,5 +27,5 @@ openwebui:
         # No box-level check PLAN: the entrypoint + WEBUI_ADMIN_EMAIL probes live on the
         # openwebui candy, and the pixi python is proven by its supervised service — one
         # candy check covers every box composing it. The composed IMAGE is proven by the
-        # disposable beds `check-openwebui-pod` and `check-comfyui-openwebui-pair` in this
-        # repo's charly.yml.
+        # disposable bed `check-openwebui-pod` in this repo's charly.yml (the ComfyUI pair
+        # bed returns with opencharly/charly#1294).

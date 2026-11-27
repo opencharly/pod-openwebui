@@ -1,8 +1,10 @@
 #  opencharly/pod-openwebui — the Open Web UI service: the `openwebui` candy, its
 #  auto-config entrypoint and pixi environment at the repo root, and now the
-#  `openwebui` image box with its two disposable R10 beds, which live HERE with the
-#  service they test (AGENTS.md "Repo classes and naming": a bed lives with the thing
-#  it tests).
+#  `openwebui` image box with its disposable R10 bed, which lives HERE with the
+#  service it tests (AGENTS.md "Repo classes and naming": a bed lives with the thing
+#  it tests). The PAIR bed (ComfyUI <-> Open Web UI) is not here yet: building a box
+#  from a namespace import is broken (opencharly/charly#1294), so the bed that needs
+#  `comfypod.comfyui-cdi` returns when that lands.
 #
 #  A standalone consumer declares what a copy inside a distro inherited: the base
 #  as a NAMESPACED import at the project root (a namespace mounted by a discovered
