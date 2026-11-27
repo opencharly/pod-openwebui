@@ -631,7 +631,7 @@ check-openwebui-pod:
         image: openwebui
         disposable: true
         lifecycle: dev
-        description: Sole proof of the openwebui image on the CachyOS base — the Open Web UI chat front-end with its auto-config entrypoint, composed with agent-forwarding (GPG/SSH/direnv) and pod-dbus, mirroring the Fedora box candy-for-candy so the two are comparable. Builds the pod on cachyos (open-webui 0.13.4 from PyPI through pixi, on the 3.12 interpreter upstream requires), deploys it, and runs the candy baked checks — entrypoint present and executable, supervisord service running, HTTP 200 on the auto-allocated port, injected WEBUI_ADMIN_EMAIL, published port reachable — plus the python layer floor assertion and the served open-webui version read from /api/config. The HTTP probes are readiness-bounded (eventually 3m) because Open Web UI migrates its database before uvicorn binds.
+        description: Sole proof of the openwebui image on the CachyOS base — the Open Web UI chat front-end with its auto-config entrypoint, composed with agent-forwarding (GPG/SSH/direnv) and pod-dbus, mirroring the Fedora box candy-for-candy so the two are comparable. Builds the pod on cachyos (open-webui 0.13.4 from PyPI through pixi, on the 3.12 interpreter upstream requires), deploys it, and runs the candy baked checks — entrypoint present and executable, supervisord service running, HTTP 200 on the auto-allocated port, injected WEBUI_ADMIN_EMAIL, published port reachable — plus the python layer floor assertion and the served open-webui version read from /api/config. The HTTP probes are readiness-bounded (eventually 10m, the candy's own cold-start budget) because Open Web UI migrates its database and loads its embedding model before uvicorn binds.
         env:
             OPENAI_API_BASE_URL: https://api.openai.com/v1
             OPENAI_API_KEY: not-a-real-key
@@ -644,8 +644,12 @@ check-openwebui-pod:
               context:
                 - runtime
               timeout: 30s
-              eventually: 3m
-              retry_interval: 2s
+              # 10m, the SAME budget the candy's own web-interface probe carries: this check
+              # measures the same cold-start boundary, and 3m was measured insufficient — the
+              # live phase of the run that proved this PR took 2m50s, inside 10s of the old
+              # expiry, so a slower cold start would fail HERE while the candy's probe passed.
+              eventually: 10m
+              retry_interval: 5s
               http:
                 http: http://127.0.0.1:${HOST_PORT:8080}/api/config
                 status: 200
