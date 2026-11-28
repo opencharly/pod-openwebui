@@ -226,8 +226,6 @@ openwebui:
               key: charly/api-key/comfyui
 
         mcp_accept:
-            - name: jupyter
-              description: "JupyterLab CRDT MCP server for notebook manipulation"
             - name: chrome-devtools
               description: "Chrome DevTools MCP server for browser automation"
         port:
