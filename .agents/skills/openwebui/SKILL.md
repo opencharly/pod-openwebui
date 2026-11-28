@@ -161,18 +161,14 @@ Deploy alongside provider containers for full functionality:
 charly config ollama
 charly start ollama
 
-# 2. Deploy jupyter (provides jupyter MCP server)
-charly config jupyter --update-all
-charly start jupyter
-
-# 3. Deploy openwebui (consumes both)
+# 2. Deploy openwebui (it consumes its accepted providers)
 charly config openwebui --env-file .secrets --update-all
 charly start openwebui
 ```
 
 Open WebUI receives:
 - `OLLAMA_BASE_URL=http://charly-ollama:11434` — local LLM inference
-- `TOOL_SERVER_CONNECTIONS=[...]` — MCP servers (jupyter + chrome-devtools)
+- `TOOL_SERVER_CONNECTIONS=[...]` — MCP servers (chrome-devtools)
 - `CODE_EXECUTION_ENGINE=jupyter` — code execution via Jupyter
 
 ### `TOOL_SERVER_CONNECTIONS` shape
@@ -258,7 +254,6 @@ Rules that are load-bearing:
 
 ## Related Boxes
 
-- `/charly-jupyter:jupyter` — deploy alongside for MCP notebooks and code execution
 - `/charly-ollama:ollama` — deploy alongside for local LLM inference
 - `/charly-hermes:hermes` — alternative AI frontend (CLI agent vs web UI)
 
